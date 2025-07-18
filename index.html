@@ -76,25 +76,14 @@
         const onlineCountSpan = document.getElementById('online-count');
         const completedCountSpan = document.getElementById('completed-count');
 
-        // Memória de canais já abertos
         function getOpenedChannels() {
             return new Set(JSON.parse(localStorage.getItem('openedKickChannels')) || []);
         }
+
         function addChannelToOpened(channelName) {
             const opened = getOpenedChannels();
             opened.add(channelName);
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(opened)));
-        }
-
-        // Super-memória de todos os canais já detectados online
-        function getAllDetectedOnline() {
-            return new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
-        }
-        function updateAllDetectedOnline(newlyDetected) {
-            const allDetected = getAllDetectedOnline();
-            newlyDetected.forEach(channel => allDetected.add(channel));
-            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetected)));
-            return allDetected;
         }
         
         function updateCounters() {
@@ -104,36 +93,53 @@
             completedCountSpan.textContent = completedCount;
         }
 
-        async function renderOnlineChannels() {
-            statusMessage.textContent = 'Buscando canais online...';
+        async function checkAndRenderOnlineChannels() {
+            const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            if (savedChannels.length === 0) {
+                launcherContainer.innerHTML = '';
+                statusMessage.textContent = 'Sua lista está vazia.';
+                statusMessage.style.display = 'block';
+                updateCounters();
+                return;
+            }
+            
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
-            onlineCountSpan.textContent = '...';
-            completedCountSpan.textContent = getOpenedChannels().size;
+            updateCounters();
 
-            try {
-                const response = await fetch('/api/get-online');
-                if (!response.ok) throw new Error('Erro de comunicação com o servidor.');
-                
-                const newlyDetectedOnline = await response.json();
-                const allDetectedOnline = updateAllDetectedOnline(newlyDetectedOnline);
-                const openedChannels = getOpenedChannels();
+            let allDetectedOnline = new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
+            let i = 0;
 
-                const pendingChannels = Array.from(allDetectedOnline).filter(ch => !openedChannels.has(ch));
-                
-                updateCounters();
-                onlineCountSpan.textContent = pendingChannels.length;
-
-                if (pendingChannels.length > 0) {
-                    statusMessage.style.display = 'none';
-                    pendingChannels.forEach(channelName => createLauncherElement(channelName));
-                } else {
-                    statusMessage.textContent = 'Nenhum canal pendente. Clique em "Começar de Novo" para reiniciar.';
+            for (const channelName of savedChannels) {
+                i++;
+                statusMessage.textContent = `Verificando ${i} de ${savedChannels.length}: ${channelName}`;
+                try {
+                    const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
+                    const response = await fetch(proxyUrl);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.livestream) {
+                            allDetectedOnline.add(channelName);
+                        }
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 300)); // Pausa segura
+                } catch (error) {
+                    console.error(`Erro ao verificar ${channelName}:`, error);
                 }
-            } catch (error) {
-                console.error("Erro fatal ao buscar status:", error);
-                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
             }
+            
+            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetectedOnline)));
+            const openedChannels = getOpenedChannels();
+            const pendingChannels = Array.from(allDetectedOnline).filter(ch => !openedChannels.has(ch));
+            
+            if (pendingChannels.length > 0) {
+                statusMessage.style.display = 'none';
+                pendingChannels.forEach(channelName => createLauncherElement(channelName));
+            } else {
+                statusMessage.textContent = 'Nenhum canal pendente. Clique em "Começar de Novo" para reiniciar.';
+            }
+            updateCounters();
         }
 
         function openChatAndMarkAsDone(channelName) {
@@ -171,21 +177,6 @@
             launcherContainer.appendChild(launcherWrapper);
         }
 
-        async function updateMasterListOnServer(channelList) {
-             try {
-                const response = await fetch('/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(channelList)
-                });
-                if (!response.ok) throw new Error('Falha ao salvar a lista.');
-                console.log('Lista mestre atualizada no servidor.');
-             } catch (error) {
-                console.error("Erro ao salvar lista mestre:", error);
-                alert("Não foi possível salvar a lista no servidor.");
-             }
-        }
-
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
             if (!streamerName) return;
@@ -197,8 +188,7 @@
             savedChannels.push(streamerName);
             localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
             streamerInput.value = '';
-            updateMasterListOnServer(savedChannels);
-            alert(`${streamerName} foi adicionado. O robô irá incluí-lo na próxima verificação.`);
+            alert(`${streamerName} foi adicionado. Aperte F5 para incluir na verificação.`);
         }
 
         function removeChannelFromStorage(channelName) {
@@ -206,7 +196,7 @@
             
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             let openedChannels = getOpenedChannels();
-            let allDetected = getAllDetectedOnline();
+            let allDetected = new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
 
             const updatedChannels = savedChannels.filter(c => c !== channelName);
             openedChannels.delete(channelName);
@@ -216,12 +206,11 @@
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(openedChannels)));
             localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetected)));
             
-            updateMasterListOnServer(updatedChannels);
             renderOnlineChannels();
         }
 
         resetBtn.addEventListener('click', () => {
-            if (confirm('Isso irá zerar a contagem de canais concluídos e a memória de todos os canais já detectados. Deseja continuar?')) {
+            if (confirm('Isso irá zerar a contagem de concluídos e a memória de todos os canais já detectados. Deseja continuar?')) {
                 localStorage.removeItem('openedKickChannels');
                 localStorage.removeItem('allDetectedOnline');
                 renderOnlineChannels();
@@ -233,7 +222,7 @@
             if (event.key === 'Enter') addNewChannel();
         });
         
-        document.addEventListener('DOMContentLoaded', renderOnlineChannels);
+        document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
     </script>
 </body>
 </html>
