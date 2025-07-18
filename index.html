@@ -76,14 +76,25 @@
         const onlineCountSpan = document.getElementById('online-count');
         const completedCountSpan = document.getElementById('completed-count');
 
+        // Memória de canais já abertos
         function getOpenedChannels() {
             return new Set(JSON.parse(localStorage.getItem('openedKickChannels')) || []);
         }
-
         function addChannelToOpened(channelName) {
             const opened = getOpenedChannels();
             opened.add(channelName);
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(opened)));
+        }
+
+        // Super-memória de todos os canais já detectados online
+        function getAllDetectedOnline() {
+            return new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
+        }
+        function updateAllDetectedOnline(newlyDetected) {
+            const allDetected = getAllDetectedOnline();
+            newlyDetected.forEach(channel => allDetected.add(channel));
+            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetected)));
+            return allDetected;
         }
         
         function updateCounters() {
@@ -101,14 +112,16 @@
             completedCountSpan.textContent = getOpenedChannels().size;
 
             try {
-                const response = await fetch('/api');
+                const response = await fetch('/api/get-online');
                 if (!response.ok) throw new Error('Erro de comunicação com o servidor.');
                 
-                const allOnlineChannels = await response.json();
+                const newlyDetectedOnline = await response.json();
+                const allDetectedOnline = updateAllDetectedOnline(newlyDetectedOnline);
                 const openedChannels = getOpenedChannels();
-                const pendingChannels = allOnlineChannels.filter(ch => !openedChannels.has(ch));
+
+                const pendingChannels = Array.from(allDetectedOnline).filter(ch => !openedChannels.has(ch));
                 
-                updateCounters(); 
+                updateCounters();
                 onlineCountSpan.textContent = pendingChannels.length;
 
                 if (pendingChannels.length > 0) {
@@ -193,17 +206,24 @@
             
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             let openedChannels = getOpenedChannels();
+            let allDetected = getAllDetectedOnline();
+
             const updatedChannels = savedChannels.filter(c => c !== channelName);
             openedChannels.delete(channelName);
+            allDetected.delete(channelName);
+
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(openedChannels)));
+            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetected)));
+            
             updateMasterListOnServer(updatedChannels);
             renderOnlineChannels();
         }
 
         resetBtn.addEventListener('click', () => {
-            if (confirm('Isso irá zerar a contagem de canais concluídos e recarregar a lista de pendentes. Deseja continuar?')) {
+            if (confirm('Isso irá zerar a contagem de canais concluídos e a memória de todos os canais já detectados. Deseja continuar?')) {
                 localStorage.removeItem('openedKickChannels');
+                localStorage.removeItem('allDetectedOnline');
                 renderOnlineChannels();
             }
         });
