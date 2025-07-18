@@ -15,7 +15,6 @@
         #channel-display { position: relative; height: 120px; margin-top: 30px; display: flex; align-items: center; justify-content: center; }
         .channel-card { background-color: #1f1f1f; border: 1px solid #444; border-left: 4px solid #00ff7f; border-radius: 8px; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; animation: fadeIn 0.5s ease; }
         .channel-name { font-weight: bold; font-size: 1.5em; color: #eee; }
-        .channel-actions { display: flex; align-items: center; gap: 10px; }
         .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 12px 18px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 1em; }
         #next-channel-btn { background-color: #7f7fff; color: #111; border: none; padding: 15px 25px; font-size: 1.2em; border-radius: 8px; cursor: pointer; }
         #next-channel-btn:disabled { background-color: #333; color: #777; cursor: not-allowed; }
@@ -28,9 +27,7 @@
         <div id="main-controls">
             <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
-            <div id="counter-display">
-                Concluídos: <span id="completed-count">0</span>
-            </div>
+            <div id="counter-display">Concluídos: <span id="completed-count">0</span></div>
         </div>
         <div id="channel-display">
              <button id="next-channel-btn">Buscar Próximo Online</button>
@@ -60,7 +57,7 @@
         async function findNextOnline() {
             nextChannelBtn.disabled = true;
             nextChannelBtn.textContent = 'Buscando...';
-            channelDisplay.innerHTML = ''; // Limpa o card anterior
+            channelDisplay.innerHTML = '';
             statusMessage.textContent = `Verificando a partir do canal ${currentIndex + 1}...`;
 
             const openedChannels = getOpenedChannels();
@@ -69,47 +66,52 @@
                 const channelName = masterChannelList[currentIndex];
                 statusMessage.textContent = `Verificando ${currentIndex + 1}/${masterChannelList.length}: ${channelName}`;
 
-                if (!openedChannels.has(channelName)) {
-                    try {
-                        const response = await fetch('/api/status', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ channel: channelName })
-                        });
-                        const data = await response.json();
-                        if (data.is_live) {
-                            createLauncherElement(channelName);
-                            statusMessage.textContent = `Encontrado!`;
-                            nextChannelBtn.disabled = false;
-                            nextChannelBtn.textContent = 'Buscar Próximo Online';
-                            return; // Para a busca
-                        }
-                    } catch (error) {
-                        console.error(`Erro ao verificar ${channelName}:`, error);
+                if (openedChannels.has(channelName)) {
+                    currentIndex++;
+                    continue; // Pula se já foi aberto
+                }
+                
+                try {
+                    const response = await fetch('/api/status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channel: channelName })
+                    });
+                    const data = await response.json();
+                    if (data.is_live) {
+                        createLauncherElement(channelName);
+                        statusMessage.textContent = `Encontrado!`;
+                        nextChannelBtn.disabled = true; // Desabilita o botão principal enquanto um card está na tela
+                        return; // Para a busca e espera a ação do usuário
                     }
+                } catch (error) {
+                    console.error(`Erro ao verificar ${channelName}:`, error);
                 }
                 currentIndex++;
             }
 
             // Se chegou ao final da lista
             statusMessage.textContent = 'Verificação concluída! Nenhum outro canal online encontrado.';
-            nextChannelBtn.textContent = 'Começar de Novo';
+            nextChannelBtn.innerHTML = 'Começar de Novo';
             nextChannelBtn.style.backgroundColor = '#ffae42';
+            channelDisplay.innerHTML = '';
+            channelDisplay.appendChild(nextChannelBtn);
             nextChannelBtn.disabled = false;
         }
 
         function createLauncherElement(channelName) {
+            channelDisplay.innerHTML = ''; // Limpa o botão de busca
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-card';
             launcherWrapper.innerHTML = `
                 <span class="channel-name">${channelName}</span>
-                <button class="launch-btn">Abrir e Buscar Próximo</button>`;
+                <button class="launch-btn">Abrir e Próximo</button>`;
             launcherWrapper.querySelector('.launch-btn').onclick = () => {
                 window.open(`https://kick.com/${channelName}/chatroom`, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
                 addChannelToOpened(channelName);
                 updateCompletedCounter();
-                currentIndex++; // Avança para o próximo da lista mestre
-                findNextOnline();
+                currentIndex++;
+                findNextOnline(); // Retoma a busca
             };
             channelDisplay.appendChild(launcherWrapper);
         }
@@ -130,7 +132,6 @@
             statusMessage.textContent = `${masterChannelList.length} canais na sua lista. Pronto para começar.`;
         }
         
-        // --- Funções de gerenciamento da lista mestre ---
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
             if (!streamerName) return;
