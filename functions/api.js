@@ -1,4 +1,4 @@
-// Este é o nosso novo despachante "tudo em um"
+// Este é o nosso despachante "tudo em um" - VERSÃO CORRIGIDA
 export async function onRequest(context) {
   const { request, env } = context;
   const { CHANNELS_KV } = env; // Acessa nosso banco de dados
@@ -15,10 +15,10 @@ export async function onRequest(context) {
 
     // Se a página estiver ENVIANDO a lista de canais para salvar (POST)
     case 'POST': {
-      const channelList = await request.json();
+      const channelList = await context.request.json();
+      // A linha que causava o erro foi removida daqui.
+      // Agora ele apenas salva a lista e retorna sucesso.
       await CHANNELS_KV.put('all_channels', JSON.stringify(channelList));
-      // Inicia a verificação em segundo plano imediatamente após salvar a nova lista
-      ctx.waitUntil(runScheduled(null, env, ctx));
       return new Response(JSON.stringify({ success: true, message: `${channelList.length} canais salvos.` }), {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -30,9 +30,9 @@ export async function onRequest(context) {
   }
 }
 
-// Esta é a função do nosso "robô", agora dentro do mesmo arquivo
-async function runScheduled(controller, env, ctx) {
-    console.log("Iniciando verificação de canais...");
+// Esta é a função do nosso "robô", que roda em segundo plano
+async function runScheduled(env) {
+    console.log("Iniciando verificação agendada de canais...");
     const allChannels = await env.CHANNELS_KV.get('all_channels', 'json') || [];
     if (allChannels.length === 0) return;
 
@@ -48,7 +48,7 @@ async function runScheduled(controller, env, ctx) {
                     if (data.livestream) onlineChannels.add(channelName);
                 }
             } catch (error) {
-                console.error(`Worker: Erro ao verificar ${channelName}:`, error);
+                console.error(`Robô: Erro ao verificar ${channelName}:`, error);
             }
         });
         await Promise.all(promises);
@@ -61,6 +61,6 @@ async function runScheduled(controller, env, ctx) {
 // Este é o nosso robô que roda a cada 2 minutos
 export default {
     async scheduled(controller, env, ctx) {
-        ctx.waitUntil(runScheduled(controller, env, ctx));
+        ctx.waitUntil(runScheduled(env));
     },
 };
