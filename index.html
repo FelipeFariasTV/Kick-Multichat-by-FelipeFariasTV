@@ -116,8 +116,6 @@
 
         let channelTimers = {};
 
-        // --- LÓGICA DE STATUS E RENDERIZAÇÃO (CORRIGIDA) ---
-
         async function checkAndRenderOnlineChannels() {
             const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             
@@ -130,28 +128,31 @@
             
             statusMessage.textContent = 'Verificando canais online...';
             statusMessage.style.display = 'block';
-            launcherContainer.innerHTML = ''; // Limpa a tela antes de começar a verificação
+            launcherContainer.innerHTML = '';
 
             let onlineChannels = [];
 
-            // **A CORREÇÃO ESTÁ AQUI: Verificando um por um**
             for (const channelName of savedChannels) {
                 try {
-                    const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
+                    // --- MUDANÇA PRINCIPAL AQUI: USANDO O PROXY ---
+                    const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
+                    
+                    const response = await fetch(proxyUrl);
+                    // --- FIM DA MUDANÇA ---
+
                     if (response.ok) {
                         const data = await response.json();
                         if (data.livestream) {
                             onlineChannels.push(channelName);
                         }
                     }
-                    // Pequena pausa para não sobrecarregar a API
                     await new Promise(resolve => setTimeout(resolve, 50)); 
                 } catch (error) {
                     console.error(`Erro ao verificar status de ${channelName}:`, error);
                 }
             }
 
-            // Agora renderiza apenas os que estão online
             if (onlineChannels.length > 0) {
                 statusMessage.style.display = 'none';
                 onlineChannels.forEach(channelName => createLauncherElement(channelName));
@@ -160,8 +161,6 @@
                 statusMessage.style.display = 'block';
             }
         }
-
-        // --- LÓGICA DE ABRIR CHATS E TIMERS ---
 
         function openChatAndStartTimer(channelName) {
             const chatUrl = `https://kick.com/${channelName}/chatroom`;
@@ -185,8 +184,6 @@
             channelTimers[channelName] = intervalId;
         }
 
-        // --- LÓGICA DE SALVAMENTO E CRIAÇÃO DE ELEMENTOS ---
-        
         function createLauncherElement(channelName) {
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-launcher';
@@ -219,3 +216,48 @@
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             if (savedChannels.includes(streamerName)) {
                 alert(`O canal ${streamerName} já está na lista.`);
+                return;
+            }
+
+            savedChannels.push(streamerName);
+            localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
+            streamerInput.value = '';
+            checkAndRenderOnlineChannels();
+        }
+
+        function removeChannel(channelName) {
+            if (channelTimers[channelName]) {
+                clearInterval(channelTimers[channelName]);
+                delete channelTimers[channelName];
+            }
+            let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            const updatedChannels = savedChannels.filter(c => c !== channelName);
+            localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
+            checkAndRenderOnlineChannels();
+        }
+
+        addChatBtn.addEventListener('click', addNewChannel);
+        streamerInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') addNewChannel();
+        });
+
+        openAllOnlineBtn.addEventListener('click', () => {
+            const onlineChannelElements = document.querySelectorAll('.channel-launcher');
+            if (onlineChannelElements.length === 0) {
+                alert('Nenhum canal online para abrir.');
+                return;
+            }
+            onlineChannelElements.forEach(channelElement => {
+                const channelName = channelElement.dataset.channel;
+                openChatAndStartTimer(channelName);
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAndRenderOnlineChannels();
+            setInterval(checkAndRenderOnlineChannels, 60000);
+        });
+    </script>
+
+</body>
+</html>
