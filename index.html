@@ -53,13 +53,12 @@
         .channel-launcher {
             background-color: #1f1f1f;
             border: 1px solid #333;
-            border-left: 4px solid #00ff7f; /* Apenas canais online serão mostrados, então a borda é sempre verde */
+            border-left: 4px solid #00ff7f;
             border-radius: 8px;
             padding: 10px 15px;
-            display: flex; /* 'none' para offline, 'flex' para online */
+            display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: opacity 0.5s ease;
         }
         .channel-info {
             display: flex;
@@ -90,6 +89,7 @@
             text-align: center;
             color: #777;
             font-style: italic;
+            padding: 20px;
         }
     </style>
 </head>
@@ -104,7 +104,7 @@
 
         <div id="launcher-container">
             </div>
-        <p id="status-message" style="display: none;">Nenhum canal online no momento.</p>
+        <p id="status-message" style="display: none;">Verificando canais online...</p>
     </div>
 
     <script>
@@ -116,45 +116,43 @@
 
         let channelTimers = {};
 
-        // --- LÓGICA DE STATUS ONLINE ---
+        // --- LÓGICA DE STATUS E RENDERIZAÇÃO ---
 
-        async function checkChannelStatus(channelName) {
-            const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
-            if (!launcherElement) return;
-
-            try {
-                const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
-                if (!response.ok) throw new Error('Network response was not ok');
-                const data = await response.json();
-                
-                // AQUI ESTÁ A MUDANÇA PRINCIPAL: MOSTRAR OU ESCONDER O ELEMENTO
-                if (data.livestream) {
-                    launcherElement.style.display = 'flex'; // Mostra o canal se estiver online
-                } else {
-                    launcherElement.style.display = 'none'; // Esconde o canal se estiver offline
-                }
-            } catch (error) {
-                console.error(`Erro ao verificar status de ${channelName}:`, error);
-                launcherElement.style.display = 'none'; // Esconde em caso de erro
+        async function checkAndRenderOnlineChannels() {
+            const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            if (savedChannels.length === 0) {
+                statusMessage.textContent = 'Sua lista de canais está vazia. Adicione um canal para começar.';
+                statusMessage.style.display = 'block';
+                return;
             }
-        }
-        
-        function updateStatusMessage() {
-            const onlineChannels = document.querySelectorAll('.channel-launcher[style*="display: flex"]');
+            
+            statusMessage.textContent = 'Verificando canais online...';
+            statusMessage.style.display = 'block';
+
+            const promises = savedChannels.map(async (channelName) => {
+                try {
+                    const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
+                    if (!response.ok) return null;
+                    const data = await response.json();
+                    return data.livestream ? channelName : null;
+                } catch (error) {
+                    console.error(`Erro ao verificar status de ${channelName}:`, error);
+                    return null;
+                }
+            });
+
+            const results = await Promise.all(promises);
+            const onlineChannels = results.filter(Boolean); // Filtra para manter apenas os nomes dos canais online
+
+            launcherContainer.innerHTML = ''; // Limpa a lista atual
+
             if (onlineChannels.length > 0) {
                 statusMessage.style.display = 'none';
+                onlineChannels.forEach(channelName => createLauncherElement(channelName));
             } else {
+                statusMessage.textContent = 'Nenhum canal online no momento.';
                 statusMessage.style.display = 'block';
             }
-        }
-
-        async function updateAllStatuses() {
-            const launchers = document.querySelectorAll('.channel-launcher');
-            const channels = Array.from(launchers).map(launcher => launcher.dataset.channel);
-
-            await Promise.all(channels.map(channel => checkChannelStatus(channel)));
-            
-            updateStatusMessage(); // Atualiza a mensagem de status após a verificação
         }
 
         // --- LÓGICA DE ABRIR CHATS E TIMERS ---
@@ -166,21 +164,4 @@
             if (channelTimers[channelName]) return;
 
             const timerElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"] .timer`);
-            if (!timerElement) return;
-            
-            let seconds = 0;
-            timerElement.style.display = 'inline-block';
-
-            const intervalId = setInterval(() => {
-                seconds++;
-                const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-                const secs = (seconds % 60).toString().padStart(2, '0');
-                timerElement.textContent = `${mins}:${secs}`;
-            }, 1000);
-
-            channelTimers[channelName] = intervalId;
-        }
-
-        // --- LÓGICA DE SALVAMENTO E CRIAÇÃO DE ELEMENTOS ---
-
-        function loadChannels() {
+            if (!
