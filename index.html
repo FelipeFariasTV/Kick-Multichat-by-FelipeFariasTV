@@ -63,33 +63,52 @@
             completedCountSpan.textContent = getOpenedChannels().size;
         }
 
-        async function renderOnlineChannels() {
-            statusMessage.textContent = 'Buscando lista de canais online...';
+        async function checkAndRenderOnlineChannels() {
+            const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            if (savedChannels.length === 0) {
+                launcherContainer.innerHTML = '';
+                statusMessage.textContent = 'Sua lista está vazia.';
+                statusMessage.style.display = 'block';
+                updateCounters();
+                return;
+            }
+            
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
-            updateCounters();
-            onlineCountSpan.textContent = '...';
+            let allDetectedOnline = new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
 
-            try {
-                const response = await fetch('/api');
-                if (!response.ok) throw new Error('Erro de comunicação com o despachante.');
+            const batchSize = 20;
+            for (let i = 0; i < savedChannels.length; i += batchSize) {
+                const batch = savedChannels.slice(i, i + batchSize);
+                statusMessage.textContent = `Verificando pacote ${Math.floor(i / batchSize) + 1} de ${Math.ceil(savedChannels.length / batchSize)}...`;
                 
-                const allOnlineChannels = await response.json();
-                const openedChannels = getOpenedChannels();
-                const pendingChannels = allOnlineChannels.filter(ch => !openedChannels.has(ch));
-                
-                if (pendingChannels.length > 0) {
-                    statusMessage.style.display = 'none';
-                    pendingChannels.forEach(channelName => createLauncherElement(channelName));
-                } else {
-                    statusMessage.textContent = 'Nenhum canal pendente. Clique em "Começar de Novo" para reiniciar.';
+                try {
+                    const response = await fetch('/api/status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(batch)
+                    });
+
+                    if (response.ok) {
+                        const onlineFromBatch = await response.json();
+                        onlineFromBatch.forEach(channel => allDetectedOnline.add(channel));
+                    }
+                } catch (error) {
+                    console.error("Erro ao processar pacote:", error);
                 }
-            } catch (error) {
-                console.error("Erro fatal ao buscar status:", error);
-                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
-            } finally {
-                updateCounters();
             }
+            
+            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetectedOnline)));
+            const openedChannels = getOpenedChannels();
+            const pendingChannels = Array.from(allDetectedOnline).filter(ch => !openedChannels.has(ch));
+            
+            if (pendingChannels.length > 0) {
+                statusMessage.style.display = 'none';
+                pendingChannels.forEach(channelName => createLauncherElement(channelName));
+            } else {
+                statusMessage.textContent = 'Nenhum canal pendente. Clique em "Começar de Novo" para reiniciar.';
+            }
+            updateCounters();
         }
 
         function openChatAndMarkAsDone(channelName) {
@@ -122,21 +141,6 @@
             launcherContainer.appendChild(launcherWrapper);
         }
 
-        async function updateMasterListOnServer(channelList) {
-             try {
-                const response = await fetch('/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(channelList)
-                });
-                if (!response.ok) throw new Error('Falha ao salvar a lista no servidor.');
-                console.log('Lista mestre atualizada no servidor.');
-             } catch (error) {
-                console.error("Erro ao salvar lista mestre:", error);
-                alert("Não foi possível salvar a lista no servidor.");
-             }
-        }
-
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
             if (!streamerName) return;
@@ -148,22 +152,27 @@
             savedChannels.push(streamerName);
             localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
             streamerInput.value = '';
-            updateMasterListOnServer(savedChannels);
-            alert(`${streamerName} foi adicionado. O robô irá atualizar a lista de online em até 2 minutos.`);
+            alert(`${streamerName} foi adicionado. Aperte F5 para que ele seja incluído na verificação.`);
         }
 
         function removeChannelFromStorage(channelName) {
             if (!confirm(`Remover "${channelName}" da sua lista permanentemente?`)) return;
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            let openedChannels = getOpenedChannels();
+            let allDetected = new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
             const updatedChannels = savedChannels.filter(c => c !== channelName);
+            openedChannels.delete(channelName);
+            allDetected.delete(channelName);
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
-            updateMasterListOnServer(updatedChannels);
+            localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(openedChannels)));
+            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetected)));
             renderOnlineChannels();
         }
 
         resetBtn.addEventListener('click', () => {
-            if (confirm('Isso irá zerar a contagem de canais concluídos. Deseja continuar?')) {
+            if (confirm('Isso irá zerar a contagem de concluídos e a memória de todos os canais já detectados. Deseja continuar?')) {
                 localStorage.removeItem('openedKickChannels');
+                localStorage.removeItem('allDetectedOnline');
                 renderOnlineChannels();
             }
         });
@@ -173,7 +182,7 @@
             if (event.key === 'Enter') addNewChannel();
         });
         
-        document.addEventListener('DOMContentLoaded', renderOnlineChannels);
+        document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
     </script>
 </body>
 </html>
