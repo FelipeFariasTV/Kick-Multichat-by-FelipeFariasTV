@@ -12,6 +12,7 @@
             margin: 0;
             padding: 20px;
             font-size: 16px;
+            overflow: hidden; /* Previne o scroll da página principal */
         }
         .container {
             max-width: 600px;
@@ -19,6 +20,7 @@
         }
         #main-controls {
             display: flex;
+            align-items: center;
             gap: 10px;
             margin-bottom: 20px;
             border-bottom: 1px solid #333;
@@ -40,36 +42,71 @@
             font-weight: bold;
             border-radius: 5px;
             cursor: pointer;
-            transition: background-color 0.3s, transform 0.1s;
+            transition: transform 0.1s;
         }
         #addChatBtn:active { transform: scale(0.98); }
 
+        #counter-display {
+            font-size: 1.2em;
+            color: #aaa;
+            font-weight: bold;
+        }
+        #online-count {
+            color: #00ff7f;
+        }
+
         #launcher-container {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            position: relative;
+            height: 500px; /* Altura fixa para a área das "cartas" */
+            margin-top: 30px;
         }
         .channel-launcher {
             background-color: #1f1f1f;
-            border: 1px solid #333;
+            border: 1px solid #444;
             border-left: 4px solid #00ff7f;
             border-radius: 8px;
-            padding: 10px 15px;
+            padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            
+            position: absolute;
+            width: 100%;
+            box-sizing: border-box; /* Garante que padding não afete a largura total */
+            
+            /* Animação e estado inicial (escondido) */
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            transform: translateY(60px) scale(0.9);
+            opacity: 0;
+            pointer-events: none; /* Não clicável por padrão */
         }
+
+        /* Estilos para as "cartas" na pilha */
+        .channel-launcher:nth-child(1) {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+            z-index: 10;
+            pointer-events: auto; /* Apenas o primeiro é clicável */
+        }
+        .channel-launcher:nth-child(2) {
+            transform: translateY(20px) scale(0.95);
+            opacity: 0.5;
+            z-index: 9;
+        }
+        .channel-launcher:nth-child(3) {
+            transform: translateY(40px) scale(0.9);
+            opacity: 0.2;
+            z-index: 8;
+        }
+
         .channel-name {
             font-weight: bold;
-            font-size: 1.1em;
+            font-size: 1.2em;
             color: #eee;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
         .channel-actions { display: flex; align-items: center; gap: 10px; }
-        .launch-btn { background-color: #444; color: #fff; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .close-btn { background-color: #ff4d4d; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
+        .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .close-btn { background-color: #555; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
         #status-message {
             text-align: center;
             color: #777;
@@ -84,6 +121,7 @@
         <div id="main-controls">
             <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
+            <div id="counter-display">Online: <span id="online-count">0</span></div>
         </div>
 
         <div id="launcher-container">
@@ -96,14 +134,16 @@
         const addChatBtn = document.getElementById('addChatBtn');
         const launcherContainer = document.getElementById('launcher-container');
         const statusMessage = document.getElementById('status-message');
+        const onlineCountSpan = document.getElementById('online-count');
 
         async function checkAndRenderOnlineChannels() {
             const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             
             if (savedChannels.length === 0) {
                 launcherContainer.innerHTML = '';
-                statusMessage.textContent = 'Sua lista de canais está vazia. Adicione um canal para começar.';
+                statusMessage.textContent = 'Sua lista está vazia. Adicione um canal para começar.';
                 statusMessage.style.display = 'block';
+                onlineCountSpan.textContent = '0';
                 return;
             }
             
@@ -130,6 +170,7 @@
                 }
             }
 
+            onlineCountSpan.textContent = onlineChannels.length;
             if (onlineChannels.length > 0) {
                 statusMessage.style.display = 'none';
                 onlineChannels.forEach(channelName => createLauncherElement(channelName));
@@ -148,7 +189,10 @@
                 launcherElement.remove();
             }
 
-            if (launcherContainer.children.length === 0) {
+            const remaining = launcherContainer.children.length;
+            onlineCountSpan.textContent = remaining;
+
+            if (remaining === 0) {
                  statusMessage.textContent = 'Todos os chats online foram abertos. Aperte F5 para recarregar a lista.';
                  statusMessage.style.display = 'block';
             }
@@ -163,22 +207,22 @@
                 <span class="channel-name">${channelName}</span>
                 <div class="channel-actions">
                     <button class="launch-btn">Abrir Chat</button>
-                    <button class="close-btn">X</button>
+                    <button class="close-btn" title="Remover da lista salva">X</button>
                 </div>
             `;
 
             launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndRemove(channelName);
-            launcherWrapper.querySelector('.close-btn').onclick = () => removeChannelFromStorage(channelName);
+            launcherWrapper.querySelector('.close-btn').onclick = (e) => {
+                e.stopPropagation(); // Previne que o clique no X também abra o chat
+                removeChannelFromStorage(channelName);
+            };
             
             launcherContainer.appendChild(launcherWrapper);
         }
 
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
-            if (!streamerName) {
-                alert('Por favor, digite o nome de um canal.');
-                return;
-            }
+            if (!streamerName) return;
             
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             if (savedChannels.includes(streamerName)) {
