@@ -57,7 +57,7 @@
             opened.add(channelName);
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(opened)));
         }
-
+        
         function updateCounters() {
             onlineCountSpan.textContent = launcherContainer.children.length;
             completedCountSpan.textContent = getOpenedChannels().size;
@@ -67,17 +67,17 @@
             statusMessage.textContent = 'Buscando lista de canais online...';
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
+            updateCounters();
             onlineCountSpan.textContent = '...';
-            completedCountSpan.textContent = getOpenedChannels().size;
 
             try {
                 const response = await fetch('/api');
                 if (!response.ok) throw new Error('Erro de comunicação com o despachante.');
-
+                
                 const allOnlineChannels = await response.json();
                 const openedChannels = getOpenedChannels();
                 const pendingChannels = allOnlineChannels.filter(ch => !openedChannels.has(ch));
-
+                
                 if (pendingChannels.length > 0) {
                     statusMessage.style.display = 'none';
                     pendingChannels.forEach(channelName => createLauncherElement(channelName));
@@ -85,8 +85,8 @@
                     statusMessage.textContent = 'Nenhum canal pendente. Clique em "Começar de Novo" para reiniciar.';
                 }
             } catch (error) {
-                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
                 console.error("Erro fatal ao buscar status:", error);
+                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
             } finally {
                 updateCounters();
             }
@@ -103,7 +103,7 @@
                  statusMessage.style.display = 'block';
             }
         }
-
+        
         function createLauncherElement(channelName) {
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-launcher';
@@ -132,8 +132,8 @@
                 if (!response.ok) throw new Error('Falha ao salvar a lista no servidor.');
                 console.log('Lista mestre atualizada no servidor.');
              } catch (error) {
-                alert("Não foi possível salvar a lista no servidor.");
                 console.error("Erro ao salvar lista mestre:", error);
+                alert("Não foi possível salvar a lista no servidor.");
              }
         }
 
@@ -141,11 +141,15 @@
             const streamerName = streamerInput.value.trim().toLowerCase();
             if (!streamerName) return;
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            if (savedChannels.includes(streamerName)) return;
+            if (savedChannels.includes(streamerName)) {
+                alert(`O canal ${streamerName} já está na lista.`);
+                return;
+            }
             savedChannels.push(streamerName);
             localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
             streamerInput.value = '';
             updateMasterListOnServer(savedChannels);
+            alert(`${streamerName} foi adicionado. O robô irá atualizar a lista de online em até 2 minutos.`);
         }
 
         function removeChannelFromStorage(channelName) {
@@ -158,7 +162,7 @@
         }
 
         resetBtn.addEventListener('click', () => {
-            if (confirm('Isso irá zerar a contagem de concluídos e recarregar a lista. Deseja continuar?')) {
+            if (confirm('Isso irá zerar a contagem de canais concluídos. Deseja continuar?')) {
                 localStorage.removeItem('openedKickChannels');
                 renderOnlineChannels();
             }
@@ -168,7 +172,7 @@
         streamerInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') addNewChannel();
         });
-
+        
         document.addEventListener('DOMContentLoaded', renderOnlineChannels);
     </script>
 </body>
