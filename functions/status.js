@@ -1,22 +1,20 @@
-// Este é o manipulador específico para requisições POST. É mais explícito e seguro.
+// Esta função é o nosso "despachante". Ela recebe a lista de canais,
+// verifica o status de cada um na Kick e retorna apenas os que estão online.
 export async function onRequestPost(context) {
   try {
-    const savedChannels = await context.request.json();
-    if (!Array.isArray(savedChannels)) {
-      return new Response('Corpo da requisição inválido.', { status: 400 });
+    const allChannels = await context.request.json();
+    if (!Array.isArray(allChannels)) {
+      return new Response('Requisição inválida. Esperando um array de canais.', { status: 400 });
     }
 
     let onlineChannels = [];
 
-    // Itera sobre cada canal para verificar o status
-    for (const channelName of savedChannels) {
+    for (const channelName of allChannels) {
       try {
         const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
+        // O fetch acontece no servidor da Cloudflare, então não há erro CORS.
         const response = await fetch(kickApiUrl, {
-          headers: { 
-              'Accept': 'application/json',
-              'User-Agent': 'Mozilla/5.0' // Adicionado para simular um navegador
-          }
+          headers: { 'Accept': 'application/json', 'User-Agent': 'KickChannelChecker/1.0' }
         });
         
         if (response.ok) {
@@ -26,23 +24,21 @@ export async function onRequestPost(context) {
           }
         }
       } catch (error) {
+        // Ignora erros de canais individuais para não parar o processo todo.
         console.error(`Worker: Erro ao verificar ${channelName}:`, error);
       }
     }
 
-    // Retorna a lista de canais online
+    // Retorna a lista final e limpa de canais online.
     return new Response(JSON.stringify(onlineChannels), {
-      headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*' // Permite que seu site acesse a resposta
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    return new Response('Erro ao processar a requisição: ' + e.message, { status: 500 });
+    return new Response('Erro fatal ao processar a requisição: ' + e.message, { status: 500 });
   }
 }
 
-// Manipulador para outros métodos (GET, etc.), retorna erro.
+// Qualquer outro método (como GET) vai retornar um erro.
 export async function onRequest(context) {
     return new Response('Método não permitido. Use POST.', { status: 405 });
 }
