@@ -6,14 +6,26 @@
     <title>Multi-Chat Kick</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #121212;
             color: #ffffff;
             margin: 0;
             padding: 15px;
+            font-size: 16px;
         }
-        h1, p {
+        .header {
             text-align: center;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #00ff7f;
+            margin: 0;
+        }
+        p {
+            margin: 5px 0 0 0;
+            color: #aaa;
         }
         #controls {
             display: flex;
@@ -56,110 +68,6 @@
             padding: 10px;
             display: flex;
             flex-direction: column;
-            width: 340px; /* Largura ajustável */
+            width: 340px;
+            height: 550px;
         }
-        .chat-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .chat-title {
-            font-weight: bold;
-            color: #00ff7f;
-        }
-        .close-btn {
-            background-color: #ff4d4d;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 25px;
-            height: 25px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .chat-iframe {
-            border: none;
-            width: 100%;
-            height: 500px; /* Altura ajustável */
-            flex-grow: 1;
-        }
-    </style>
-</head>
-<body>
-
-    <h1>Visualizador de Múltiplos Chats da Kick</h1>
-    <p>Digite o nome de usuário do streamer da Kick e clique em "Adicionar Chat".</p>
-    
-    <div id="controls">
-        <input type="text" id="streamerInput" placeholder="Ex: xqc, roshtein...">
-        <button id="addChatBtn">Adicionar Chat</button>
-    </div>
-
-    <div id="chat-container">
-        </div>
-
-    <script>
-        const streamerInput = document.getElementById('streamerInput');
-        const addChatBtn = document.getElementById('addChatBtn');
-        const chatContainer = document.getElementById('chat-container');
-
-        // Função para adicionar um novo chat
-        function addChat() {
-            const streamerName = streamerInput.value.trim().toLowerCase();
-            if (streamerName === '') {
-                alert('Por favor, digite o nome de um streamer.');
-                return;
-            }
-
-            // Cria o wrapper do chat
-            const chatWrapper = document.createElement('div');
-            chatWrapper.className = 'chat-wrapper';
-
-            // Cria o cabeçalho com título e botão de fechar
-            const chatHeader = document.createElement('div');
-            chatHeader.className = 'chat-header';
-            
-            const chatTitle = document.createElement('span');
-            chatTitle.className = 'chat-title';
-            chatTitle.textContent = streamerName;
-
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'close-btn';
-            closeBtn.textContent = 'X';
-            closeBtn.onclick = function() {
-                chatContainer.removeChild(chatWrapper);
-            };
-
-            chatHeader.appendChild(chatTitle);
-            chatHeader.appendChild(closeBtn);
-
-            // Cria o iframe do chat
-            const iframe = document.createElement('iframe');
-            iframe.className = 'chat-iframe';
-            iframe.src = `https://kick.com/embed/chat/v2/${streamerName}`;
-            
-            // Monta o componente final
-            chatWrapper.appendChild(chatHeader);
-            chatWrapper.appendChild(iframe);
-
-            // Adiciona ao container principal
-            chatContainer.appendChild(chatWrapper);
-
-            // Limpa o input
-            streamerInput.value = '';
-        }
-
-        // Adiciona evento ao botão
-        addChatBtn.addEventListener('click', addChat);
-
-        // Permite adicionar ao pressionar "Enter" no campo de texto
-        streamerInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                addChat();
-            }
-        });
-    </script>
-
-</body>
-</html>
