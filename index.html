@@ -58,7 +58,7 @@
             <div id="counter-display">Online: <span id="online-count">0</span></div>
         </div>
         <div id="launcher-container"></div>
-        <p id="status-message" style="display: none;">Verificando canais online...</p>
+        <p id="status-message" style="display: none;">Verificando...</p>
     </div>
 
     <script>
@@ -70,31 +70,29 @@
 
         async function checkAndRenderOnlineChannels() {
             const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            
             if (savedChannels.length === 0) {
                 launcherContainer.innerHTML = '';
-                statusMessage.textContent = 'Sua lista de canais está vazia.';
+                statusMessage.textContent = 'Sua lista está vazia. Adicione um canal.';
                 statusMessage.style.display = 'block';
                 onlineCountSpan.textContent = '0';
                 return;
             }
             
-            statusMessage.textContent = 'Verificando...';
+            statusMessage.textContent = `Verificando ${savedChannels.length} canais...`;
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
             onlineCountSpan.textContent = '...';
 
             try {
-                const response = await fetch('/functions/status', {
+                // Requisição para a função na Cloudflare (no endereço /status)
+                const response = await fetch('/status', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(savedChannels)
                 });
 
-                if (!response.ok) {
-                    throw new Error('Erro na comunicação com o servidor.');
-                }
-
+                if (!response.ok) throw new Error('Erro de comunicação com o servidor.');
+                
                 const onlineChannels = await response.json();
                 
                 onlineCountSpan.textContent = onlineChannels.length;
@@ -102,13 +100,12 @@
                     statusMessage.style.display = 'none';
                     onlineChannels.forEach(channelName => createLauncherElement(channelName));
                 } else {
-                    statusMessage.textContent = 'Nenhum canal online no momento.';
+                    statusMessage.textContent = 'Nenhum canal online no momento. Aperte F5 para verificar novamente.';
                     statusMessage.style.display = 'block';
                 }
             } catch (error) {
-                console.error("Erro fatal:", error);
+                console.error("Erro fatal ao buscar status:", error);
                 statusMessage.textContent = 'Erro ao verificar status. Tente recarregar a página.';
-                statusMessage.style.display = 'block';
             }
         }
 
@@ -117,10 +114,8 @@
             window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
 
             const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
-            if (launcherElement) {
-                launcherElement.remove();
-            }
-
+            if (launcherElement) launcherElement.remove();
+            
             const remaining = launcherContainer.children.length;
             onlineCountSpan.textContent = remaining;
 
@@ -134,6 +129,7 @@
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-launcher';
             launcherWrapper.dataset.channel = channelName;
+
             launcherWrapper.innerHTML = `
                 <span class="channel-name">${channelName}</span>
                 <div class="channel-actions">
@@ -176,6 +172,7 @@
             if (event.key === 'Enter') addNewChannel();
         });
         
+        // Roda a verificação APENAS UMA VEZ quando a página carrega.
         document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
     </script>
 </body>
