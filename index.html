@@ -116,11 +116,13 @@
 
         let channelTimers = {};
 
-        // --- LÓGICA DE STATUS E RENDERIZAÇÃO ---
+        // --- LÓGICA DE STATUS E RENDERIZAÇÃO (CORRIGIDA) ---
 
         async function checkAndRenderOnlineChannels() {
             const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            
             if (savedChannels.length === 0) {
+                launcherContainer.innerHTML = '';
                 statusMessage.textContent = 'Sua lista de canais está vazia. Adicione um canal para começar.';
                 statusMessage.style.display = 'block';
                 return;
@@ -128,24 +130,28 @@
             
             statusMessage.textContent = 'Verificando canais online...';
             statusMessage.style.display = 'block';
+            launcherContainer.innerHTML = ''; // Limpa a tela antes de começar a verificação
 
-            const promises = savedChannels.map(async (channelName) => {
+            let onlineChannels = [];
+
+            // **A CORREÇÃO ESTÁ AQUI: Verificando um por um**
+            for (const channelName of savedChannels) {
                 try {
                     const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
-                    if (!response.ok) return null;
-                    const data = await response.json();
-                    return data.livestream ? channelName : null;
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.livestream) {
+                            onlineChannels.push(channelName);
+                        }
+                    }
+                    // Pequena pausa para não sobrecarregar a API
+                    await new Promise(resolve => setTimeout(resolve, 50)); 
                 } catch (error) {
                     console.error(`Erro ao verificar status de ${channelName}:`, error);
-                    return null;
                 }
-            });
+            }
 
-            const results = await Promise.all(promises);
-            const onlineChannels = results.filter(Boolean); // Filtra para manter apenas os nomes dos canais online
-
-            launcherContainer.innerHTML = ''; // Limpa a lista atual
-
+            // Agora renderiza apenas os que estão online
             if (onlineChannels.length > 0) {
                 statusMessage.style.display = 'none';
                 onlineChannels.forEach(channelName => createLauncherElement(channelName));
@@ -164,4 +170,52 @@
             if (channelTimers[channelName]) return;
 
             const timerElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"] .timer`);
-            if (!
+            if (!timerElement) return;
+            
+            let seconds = 0;
+            timerElement.style.display = 'inline-block';
+
+            const intervalId = setInterval(() => {
+                seconds++;
+                const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const secs = (seconds % 60).toString().padStart(2, '0');
+                timerElement.textContent = `${mins}:${secs}`;
+            }, 1000);
+
+            channelTimers[channelName] = intervalId;
+        }
+
+        // --- LÓGICA DE SALVAMENTO E CRIAÇÃO DE ELEMENTOS ---
+        
+        function createLauncherElement(channelName) {
+            const launcherWrapper = document.createElement('div');
+            launcherWrapper.className = 'channel-launcher';
+            launcherWrapper.dataset.channel = channelName;
+
+            launcherWrapper.innerHTML = `
+                <div class="channel-info">
+                    <span class="channel-name">${channelName}</span>
+                    <span class="timer" style="display: none;"></span>
+                </div>
+                <div class="channel-actions">
+                    <button class="launch-btn">Abrir Chat</button>
+                    <button class="close-btn">X</button>
+                </div>
+            `;
+
+            launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndStartTimer(channelName);
+            launcherWrapper.querySelector('.close-btn').onclick = () => removeChannel(channelName);
+            
+            launcherContainer.appendChild(launcherWrapper);
+        }
+
+        function addNewChannel() {
+            const streamerName = streamerInput.value.trim().toLowerCase();
+            if (streamerName === '') {
+                alert('Por favor, digite o nome de um canal.');
+                return;
+            }
+            
+            let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            if (savedChannels.includes(streamerName)) {
+                alert(`O canal ${streamerName} já está na lista.`);
