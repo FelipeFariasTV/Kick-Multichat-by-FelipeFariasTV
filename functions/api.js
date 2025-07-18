@@ -1,11 +1,9 @@
-// Este é o nosso despachante "tudo em um" - VERSÃO CORRIGIDA
+// Este é o nosso despachante "tudo em um" - VERSÃO CORRIGIDA FINAL
 export async function onRequest(context) {
-  const { request, env } = context;
-  const { CHANNELS_KV } = env; // Acessa nosso banco de dados
+  const { request, env, waitUntil } = context; // Desestruturamos o 'waitUntil' do contexto
+  const { CHANNELS_KV } = env;
 
-  // Verifica qual o "verbo" do pedido
   switch (request.method) {
-    // Se a página estiver PEDINDO a lista de online (GET)
     case 'GET': {
       const onlineChannels = await CHANNELS_KV.get('online_channels', 'json') || [];
       return new Response(JSON.stringify(onlineChannels), {
@@ -13,26 +11,26 @@ export async function onRequest(context) {
       });
     }
 
-    // Se a página estiver ENVIANDO a lista de canais para salvar (POST)
     case 'POST': {
-      const channelList = await context.request.json();
-      // A linha que causava o erro foi removida daqui.
-      // Agora ele apenas salva a lista e retorna sucesso.
+      const channelList = await request.json();
       await CHANNELS_KV.put('all_channels', JSON.stringify(channelList));
+      
+      // A CORREÇÃO ESTÁ AQUI: Usando waitUntil do contexto correto
+      // Isso inicia a verificação em segundo plano imediatamente após salvar a nova lista.
+      waitUntil(runScheduled(env));
+
       return new Response(JSON.stringify({ success: true, message: `${channelList.length} canais salvos.` }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    // Se for qualquer outro método, retorna erro.
     default:
       return new Response('Método não permitido', { status: 405 });
   }
 }
 
-// Esta é a função do nosso "robô", que roda em segundo plano
 async function runScheduled(env) {
-    console.log("Iniciando verificação agendada de canais...");
+    console.log("Iniciando verificação de canais...");
     const allChannels = await env.CHANNELS_KV.get('all_channels', 'json') || [];
     if (allChannels.length === 0) return;
 
@@ -48,7 +46,7 @@ async function runScheduled(env) {
                     if (data.livestream) onlineChannels.add(channelName);
                 }
             } catch (error) {
-                console.error(`Robô: Erro ao verificar ${channelName}:`, error);
+                console.error(`Worker: Erro ao verificar ${channelName}:`, error);
             }
         });
         await Promise.all(promises);
