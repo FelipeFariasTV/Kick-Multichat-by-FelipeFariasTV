@@ -16,16 +16,26 @@
         #counter-display { font-size: 1.1em; color: #aaa; font-weight: bold; margin-left: auto; white-space: nowrap; }
         #online-count { color: #00ff7f; }
         #completed-count { color: #ffae42; }
-        #launcher-container { position: relative; height: 500px; margin-top: 30px; }
-        .channel-launcher { background-color: #1f1f1f; border: 1px solid #444; border-left: 4px solid #00ff7f; border-radius: 8px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: absolute; width: 100%; box-sizing: border-box; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); transform-origin: bottom center; transform: translateY(60px) scale(0.9); opacity: 0; pointer-events: none; }
-        .channel-launcher:nth-child(1) { transform: translateY(0) scale(1); opacity: 1; z-index: 10; pointer-events: auto; }
-        .channel-launcher:nth-child(2) { transform: translateY(20px) scale(0.95); opacity: 0.5; z-index: 9; }
-        .channel-launcher:nth-child(3) { transform: translateY(40px) scale(0.9); opacity: 0.2; z-index: 8; }
-        .channel-name { font-weight: bold; font-size: 1.2em; color: #eee; }
+        #channel-display { position: relative; height: 120px; margin-top: 30px; display: flex; align-items: center; justify-content: center; }
+        .channel-card {
+            background-color: #1f1f1f;
+            border: 1px solid #444;
+            border-left: 4px solid #00ff7f;
+            border-radius: 8px;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+            animation: fadeIn 0.5s ease;
+        }
+        .channel-name { font-weight: bold; font-size: 1.5em; color: #eee; }
         .channel-actions { display: flex; align-items: center; gap: 10px; }
-        .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 12px 18px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 1em; }
         .close-btn { background-color: #555; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
-        #status-message { text-align: center; color: #777; font-style: italic; padding: 20px; }
+        #status-message { text-align: center; color: #777; font-style: italic; padding: 20px; min-height: 24px; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -38,18 +48,21 @@
                 Pendentes: <span id="online-count">0</span> / Concluídos: <span id="completed-count">0</span>
             </div>
         </div>
-        <div id="launcher-container"></div>
-        <p id="status-message" style="display: none;">Buscando...</p>
+        <div id="channel-display">
+            </div>
+        <p id="status-message">Carregando...</p>
     </div>
 
     <script>
         const streamerInput = document.getElementById('streamerInput');
         const addChatBtn = document.getElementById('addChatBtn');
         const resetBtn = document.getElementById('resetBtn');
-        const launcherContainer = document.getElementById('launcher-container');
+        const channelDisplay = document.getElementById('channel-display');
         const statusMessage = document.getElementById('status-message');
         const onlineCountSpan = document.getElementById('online-count');
         const completedCountSpan = document.getElementById('completed-count');
+
+        let pendingQueue = [];
 
         function getOpenedChannels() { return new Set(JSON.parse(localStorage.getItem('openedKickChannels')) || []); }
         function addChannelToOpened(channelName) {
@@ -59,86 +72,88 @@
         }
         
         function updateCounters() {
-            onlineCountSpan.textContent = launcherContainer.children.length;
+            onlineCountSpan.textContent = pendingQueue.length;
             completedCountSpan.textContent = getOpenedChannels().size;
         }
 
-        async function checkAndRenderOnlineChannels() {
-            const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            if (savedChannels.length === 0) {
-                launcherContainer.innerHTML = '';
-                statusMessage.textContent = 'Sua lista está vazia.';
-                statusMessage.style.display = 'block';
-                updateCounters();
-                return;
-            }
-            
+        async function fetchAndBuildQueue() {
+            statusMessage.textContent = 'Verificando todos os canais... Isso pode levar um momento.';
             statusMessage.style.display = 'block';
-            launcherContainer.innerHTML = '';
-            let allDetectedOnline = new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
+            channelDisplay.innerHTML = '';
+            onlineCountSpan.textContent = '...';
 
-            const batchSize = 20;
-            for (let i = 0; i < savedChannels.length; i += batchSize) {
-                const batch = savedChannels.slice(i, i + batchSize);
-                statusMessage.textContent = `Verificando pacote ${Math.floor(i / batchSize) + 1} de ${Math.ceil(savedChannels.length / batchSize)}...`;
+            try {
+                const response = await fetch('/api');
+                if (!response.ok) throw new Error('Erro de comunicação com o despachante.');
                 
-                try {
-                    const response = await fetch('/api/status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(batch)
-                    });
+                const allOnlineChannels = await response.json();
+                const openedChannels = getOpenedChannels();
+                
+                pendingQueue = allOnlineChannels.filter(ch => !openedChannels.has(ch));
+                
+                displayNextInQueue();
 
-                    if (response.ok) {
-                        const onlineFromBatch = await response.json();
-                        onlineFromBatch.forEach(channel => allDetectedOnline.add(channel));
-                    }
-                } catch (error) {
-                    console.error("Erro ao processar pacote:", error);
-                }
+            } catch (error) {
+                console.error("Erro fatal ao buscar status:", error);
+                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
             }
-            
-            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetectedOnline)));
-            const openedChannels = getOpenedChannels();
-            const pendingChannels = Array.from(allDetectedOnline).filter(ch => !openedChannels.has(ch));
-            
-            if (pendingChannels.length > 0) {
-                statusMessage.style.display = 'none';
-                pendingChannels.forEach(channelName => createLauncherElement(channelName));
-            } else {
-                statusMessage.textContent = 'Nenhum canal pendente. Clique em "Começar de Novo" para reiniciar.';
-            }
+        }
+        
+        function displayNextInQueue() {
+            channelDisplay.innerHTML = ''; // Limpa o canal anterior
             updateCounters();
+
+            if (pendingQueue.length > 0) {
+                const channelName = pendingQueue[0]; // Pega o primeiro da fila, mas não remove ainda
+                createLauncherElement(channelName);
+                statusMessage.style.display = 'none';
+            } else {
+                statusMessage.textContent = 'Fila concluída! Clique em "Começar de Novo" para reiniciar.';
+                statusMessage.style.display = 'block';
+            }
         }
 
-        function openChatAndMarkAsDone(channelName) {
-            window.open(`https://kick.com/${channelName}/chatroom`, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
+        function processCurrentChannel() {
+            if (pendingQueue.length === 0) return;
+            const channelName = pendingQueue.shift(); // Agora remove o primeiro da fila
+
+            const chatUrl = `https://kick.com/${channelName}/chatroom`;
+            window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
             addChannelToOpened(channelName);
-            const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
-            if (launcherElement) launcherElement.remove();
-            updateCounters();
-            if (launcherContainer.children.length === 0) {
-                 statusMessage.textContent = 'Todos os canais pendentes foram abertos. Aperte F5 para buscar por novos.';
-                 statusMessage.style.display = 'block';
-            }
+            displayNextInQueue(); // Mostra o próximo
         }
         
         function createLauncherElement(channelName) {
             const launcherWrapper = document.createElement('div');
-            launcherWrapper.className = 'channel-launcher';
+            launcherWrapper.className = 'channel-card';
             launcherWrapper.dataset.channel = channelName;
             launcherWrapper.innerHTML = `
                 <span class="channel-name">${channelName}</span>
                 <div class="channel-actions">
-                    <button class="launch-btn">Abrir Chat</button>
+                    <button class="launch-btn">Abrir Chat e Próximo</button>
                     <button class="close-btn" title="Remover permanentemente da lista">X</button>
                 </div>`;
-            launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndMarkAsDone(channelName);
+            launcherWrapper.querySelector('.launch-btn').onclick = () => processCurrentChannel();
             launcherWrapper.querySelector('.close-btn').onclick = (e) => {
                 e.stopPropagation();
                 removeChannelFromStorage(channelName);
             };
-            launcherContainer.appendChild(launcherWrapper);
+            channelDisplay.appendChild(launcherWrapper);
+        }
+
+        async function updateMasterListOnServer(channelList) {
+             try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(channelList)
+                });
+                if (!response.ok) throw new Error('Falha ao salvar a lista no servidor.');
+                console.log('Lista mestre atualizada no servidor.');
+             } catch (error) {
+                console.error("Erro ao salvar lista mestre:", error);
+                alert("Não foi possível salvar a lista no servidor.");
+             }
         }
 
         function addNewChannel() {
@@ -152,28 +167,23 @@
             savedChannels.push(streamerName);
             localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
             streamerInput.value = '';
-            alert(`${streamerName} foi adicionado. Aperte F5 para que ele seja incluído na verificação.`);
+            updateMasterListOnServer(savedChannels);
+            alert(`${streamerName} foi adicionado. Aperte F5 ou "Começar de Novo" para incluí-lo na verificação.`);
         }
 
         function removeChannelFromStorage(channelName) {
             if (!confirm(`Remover "${channelName}" da sua lista permanentemente?`)) return;
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            let openedChannels = getOpenedChannels();
-            let allDetected = new Set(JSON.parse(localStorage.getItem('allDetectedOnline')) || []);
             const updatedChannels = savedChannels.filter(c => c !== channelName);
-            openedChannels.delete(channelName);
-            allDetected.delete(channelName);
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
-            localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(openedChannels)));
-            localStorage.setItem('allDetectedOnline', JSON.stringify(Array.from(allDetected)));
-            renderOnlineChannels();
+            updateMasterListOnServer(updatedChannels);
+            fetchAndBuildQueue(); // Reconstrói a fila sem o canal removido
         }
 
         resetBtn.addEventListener('click', () => {
-            if (confirm('Isso irá zerar a contagem de concluídos e a memória de todos os canais já detectados. Deseja continuar?')) {
+            if (confirm('Isso irá limpar sua sessão de canais concluídos e buscar uma nova lista de todos que estão online. Deseja continuar?')) {
                 localStorage.removeItem('openedKickChannels');
-                localStorage.removeItem('allDetectedOnline');
-                renderOnlineChannels();
+                fetchAndBuildQueue();
             }
         });
 
@@ -182,7 +192,7 @@
             if (event.key === 'Enter') addNewChannel();
         });
         
-        document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
+        document.addEventListener('DOMContentLoaded', fetchAndBuildQueue);
     </script>
 </body>
 </html>
