@@ -12,47 +12,16 @@
             margin: 0;
             padding: 20px;
             font-size: 16px;
-            overflow: hidden; /* Previne o scroll da página principal */
+            overflow: hidden;
         }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        #main-controls {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 20px;
-        }
-        #streamerInput {
-            flex-grow: 1;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #333;
-            background-color: #222;
-            color: #fff;
-        }
-        #addChatBtn {
-            padding: 10px 15px;
-            border: none;
-            color: #111;
-            background-color: #00ff7f;
-            font-weight: bold;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: transform 0.1s;
-        }
+        .container { max-width: 600px; margin: 0 auto; }
+        #main-controls { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
+        #streamerInput { flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid #333; background-color: #222; color: #fff; }
+        #addChatBtn { padding: 10px 15px; border: none; color: #111; background-color: #00ff7f; font-weight: bold; border-radius: 5px; cursor: pointer; transition: transform 0.1s; }
         #addChatBtn:active { transform: scale(0.98); }
         #counter-display { font-size: 1.2em; color: #aaa; font-weight: bold; }
         #online-count { color: #00ff7f; }
-
-        #launcher-container {
-            position: relative;
-            height: 500px; /* Altura fixa para a área das "cartas" */
-            margin-top: 30px;
-        }
+        #launcher-container { position: relative; height: 500px; margin-top: 30px; }
         .channel-launcher {
             background-color: #1f1f1f;
             border: 1px solid #444;
@@ -62,65 +31,33 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            
             position: absolute;
             width: 100%;
             box-sizing: border-box;
-            
             transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
             transform-origin: bottom center;
-
-            /* Estado inicial de cada carta na pilha */
             transform: translateY(60px) scale(0.9);
             opacity: 0;
-            pointer-events: none; /* Não clicável por padrão */
+            pointer-events: none;
         }
-
-        /* Estilos para as "cartas" visíveis na pilha */
-        .channel-launcher:nth-child(1) {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-            z-index: 10;
-            pointer-events: auto; /* Apenas o primeiro é clicável */
-        }
-        .channel-launcher:nth-child(2) {
-            transform: translateY(20px) scale(0.95);
-            opacity: 0.5;
-            z-index: 9;
-        }
-        .channel-launcher:nth-child(3) {
-            transform: translateY(40px) scale(0.9);
-            opacity: 0.2;
-            z-index: 8;
-        }
-
-        .channel-name {
-            font-weight: bold;
-            font-size: 1.2em;
-            color: #eee;
-        }
+        .channel-launcher:nth-child(1) { transform: translateY(0) scale(1); opacity: 1; z-index: 10; pointer-events: auto; }
+        .channel-launcher:nth-child(2) { transform: translateY(20px) scale(0.95); opacity: 0.5; z-index: 9; }
+        .channel-launcher:nth-child(3) { transform: translateY(40px) scale(0.9); opacity: 0.2; z-index: 8; }
+        .channel-name { font-weight: bold; font-size: 1.2em; color: #eee; }
         .channel-actions { display: flex; align-items: center; gap: 10px; }
         .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .close-btn { background-color: #555; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
-        #status-message {
-            text-align: center;
-            color: #777;
-            font-style: italic;
-            padding: 20px;
-        }
+        #status-message { text-align: center; color: #777; font-style: italic; padding: 20px; }
     </style>
 </head>
 <body>
-
     <div class="container">
         <div id="main-controls">
             <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
             <div id="counter-display">Online: <span id="online-count">0</span></div>
         </div>
-
-        <div id="launcher-container">
-            </div>
+        <div id="launcher-container"></div>
         <p id="status-message" style="display: none;">Verificando canais online...</p>
     </div>
 
@@ -136,43 +73,41 @@
             
             if (savedChannels.length === 0) {
                 launcherContainer.innerHTML = '';
-                statusMessage.textContent = 'Sua lista está vazia. Adicione um canal para começar.';
+                statusMessage.textContent = 'Sua lista de canais está vazia.';
                 statusMessage.style.display = 'block';
                 onlineCountSpan.textContent = '0';
                 return;
             }
             
-            statusMessage.textContent = 'Verificando canais online...';
+            statusMessage.textContent = 'Verificando...';
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
+            onlineCountSpan.textContent = '...';
 
-            let onlineChannels = [];
+            try {
+                const response = await fetch('/functions/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(savedChannels)
+                });
 
-            for (const channelName of savedChannels) {
-                try {
-                    const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
-                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
-                    
-                    const response = await fetch(proxyUrl);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.livestream) {
-                            onlineChannels.push(channelName);
-                        }
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 250)); 
-                } catch (error) {
-                    console.error(`Erro ao verificar status de ${channelName}:`, error);
+                if (!response.ok) {
+                    throw new Error('Erro na comunicação com o servidor.');
                 }
-            }
 
-            onlineCountSpan.textContent = onlineChannels.length;
-
-            if (onlineChannels.length > 0) {
-                statusMessage.style.display = 'none';
-                onlineChannels.forEach(channelName => createLauncherElement(channelName));
-            } else {
-                statusMessage.textContent = 'Nenhum canal online no momento. Aperte F5 para verificar novamente.';
+                const onlineChannels = await response.json();
+                
+                onlineCountSpan.textContent = onlineChannels.length;
+                if (onlineChannels.length > 0) {
+                    statusMessage.style.display = 'none';
+                    onlineChannels.forEach(channelName => createLauncherElement(channelName));
+                } else {
+                    statusMessage.textContent = 'Nenhum canal online no momento.';
+                    statusMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Erro fatal:", error);
+                statusMessage.textContent = 'Erro ao verificar status. Tente recarregar a página.';
                 statusMessage.style.display = 'block';
             }
         }
@@ -190,7 +125,7 @@
             onlineCountSpan.textContent = remaining;
 
             if (remaining === 0) {
-                 statusMessage.textContent = 'Todos os chats online foram abertos. Aperte F5 para recarregar a lista.';
+                 statusMessage.textContent = 'Todos os chats online foram abertos. Aperte F5 para recarregar.';
                  statusMessage.style.display = 'block';
             }
         }
@@ -199,21 +134,17 @@
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-launcher';
             launcherWrapper.dataset.channel = channelName;
-
             launcherWrapper.innerHTML = `
                 <span class="channel-name">${channelName}</span>
                 <div class="channel-actions">
                     <button class="launch-btn">Abrir Chat</button>
                     <button class="close-btn" title="Remover da lista salva">X</button>
-                </div>
-            `;
-
+                </div>`;
             launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndRemove(channelName);
             launcherWrapper.querySelector('.close-btn').onclick = (e) => {
-                e.stopPropagation(); 
+                e.stopPropagation();
                 removeChannelFromStorage(channelName);
             };
-            
             launcherContainer.appendChild(launcherWrapper);
         }
 
@@ -247,6 +178,5 @@
         
         document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
     </script>
-
 </body>
 </html>
