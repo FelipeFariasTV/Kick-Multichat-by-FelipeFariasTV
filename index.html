@@ -27,7 +27,9 @@
         <div id="main-controls">
             <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
-            <div id="counter-display">Concluídos: <span id="completed-count">0</span></div>
+            <div id="counter-display">
+                Concluídos: <span id="completed-count">0</span>
+            </div>
         </div>
         <div id="channel-display">
              <button id="next-channel-btn">Buscar Próximo Online</button>
@@ -68,21 +70,24 @@
 
                 if (openedChannels.has(channelName)) {
                     currentIndex++;
-                    continue; // Pula se já foi aberto
+                    continue; // Pula se já foi aberto nesta sessão
                 }
                 
                 try {
-                    const response = await fetch('/api/status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channel: channelName })
-                    });
-                    const data = await response.json();
-                    if (data.is_live) {
-                        createLauncherElement(channelName);
-                        statusMessage.textContent = `Encontrado!`;
-                        nextChannelBtn.disabled = true; // Desabilita o botão principal enquanto um card está na tela
-                        return; // Para a busca e espera a ação do usuário
+                    const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
+                    const response = await fetch(proxyUrl);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.livestream) {
+                            createLauncherElement(channelName);
+                            statusMessage.textContent = `Encontrado!`;
+                            nextChannelBtn.disabled = false; // Reabilita o botão principal
+                            nextChannelBtn.textContent = 'Buscar Próximo Online';
+                            channelDisplay.appendChild(nextChannelBtn); // Move o botão para baixo do card
+                            return; // PARA a busca e espera a ação do usuário
+                        }
                     }
                 } catch (error) {
                     console.error(`Erro ao verificar ${channelName}:`, error);
@@ -100,12 +105,12 @@
         }
 
         function createLauncherElement(channelName) {
-            channelDisplay.innerHTML = ''; // Limpa o botão de busca
+            channelDisplay.innerHTML = ''; // Limpa a área de exibição
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-card';
             launcherWrapper.innerHTML = `
                 <span class="channel-name">${channelName}</span>
-                <button class="launch-btn">Abrir e Próximo</button>`;
+                <button class="launch-btn">Abrir e Buscar Próximo</button>`;
             launcherWrapper.querySelector('.launch-btn').onclick = () => {
                 window.open(`https://kick.com/${channelName}/chatroom`, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
                 addChannelToOpened(channelName);
@@ -122,6 +127,7 @@
                 currentIndex = 0;
                 updateCompletedCounter();
                 nextChannelBtn.style.backgroundColor = '#7f7fff';
+                nextChannelBtn.textContent = 'Buscar Próximo Online';
             }
             findNextOnline();
         });
