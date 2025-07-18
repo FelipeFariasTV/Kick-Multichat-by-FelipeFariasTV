@@ -72,44 +72,42 @@
             const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             if (savedChannels.length === 0) {
                 launcherContainer.innerHTML = '';
-                statusMessage.textContent = 'Sua lista está vazia.';
+                statusMessage.textContent = 'Sua lista de canais está vazia.';
                 statusMessage.style.display = 'block';
                 onlineCountSpan.textContent = '0';
                 return;
             }
             
+            statusMessage.textContent = `Verificando ${savedChannels.length} canais...`;
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
             onlineCountSpan.textContent = '...';
 
-            let onlineChannels = [];
-            let i = 0;
-            for (const channelName of savedChannels) {
-                i++;
-                statusMessage.textContent = `Verificando ${i} de ${savedChannels.length}: ${channelName}`;
-                try {
-                    const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
-                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
-                    const response = await fetch(proxyUrl);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.livestream) {
-                            onlineChannels.push(channelName);
-                        }
-                    }
-                    // Pausa longa e segura para não sermos bloqueados
-                    await new Promise(resolve => setTimeout(resolve, 400));
-                } catch (error) {
-                    console.error(`Erro ao verificar ${channelName}:`, error);
-                }
-            }
+            try {
+                // Fazendo uma única requisição para nosso "despachante" privado
+                const response = await fetch('/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(savedChannels)
+                });
 
-            onlineCountSpan.textContent = onlineChannels.length;
-            if (onlineChannels.length > 0) {
-                statusMessage.style.display = 'none';
-                onlineChannels.forEach(channelName => createLauncherElement(channelName));
-            } else {
-                statusMessage.textContent = 'Nenhum canal online no momento. Aperte F5 para verificar novamente.';
+                if (!response.ok) {
+                    throw new Error(`Erro de comunicação com o servidor: ${response.statusText}`);
+                }
+
+                const onlineChannels = await response.json();
+                
+                onlineCountSpan.textContent = onlineChannels.length;
+                if (onlineChannels.length > 0) {
+                    statusMessage.style.display = 'none';
+                    onlineChannels.forEach(channelName => createLauncherElement(channelName));
+                } else {
+                    statusMessage.textContent = 'Nenhum canal online no momento.';
+                    statusMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Erro fatal ao buscar status:", error);
+                statusMessage.textContent = 'Erro ao verificar status. Tente recarregar a página.';
             }
         }
 
