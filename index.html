@@ -101,11 +101,13 @@
             completedCountSpan.textContent = getOpenedChannels().size;
 
             try {
-                const response = await fetch('/api');
+                const response = await fetch('/api/get-online');
                 if (!response.ok) throw new Error('Erro de comunicação com o servidor.');
                 
                 const allOnlineChannels = await response.json();
                 const openedChannels = getOpenedChannels();
+
+                // LÓGICA CORRIGIDA: Filtra para mostrar apenas os canais online que AINDA NÃO FORAM ABERTOS
                 const pendingChannels = allOnlineChannels.filter(ch => !openedChannels.has(ch));
                 
                 updateCounters(); // Atualiza contagem de concluídos
@@ -190,12 +192,16 @@
 
         function removeChannelFromStorage(channelName) {
             if (!confirm(`Tem certeza que quer remover "${channelName}" da sua lista permanentemente?`)) return;
+            
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             let openedChannels = getOpenedChannels();
+
             const updatedChannels = savedChannels.filter(c => c !== channelName);
             openedChannels.delete(channelName); // Remove também da lista de abertos
+
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(openedChannels)));
+            
             updateMasterListOnServer(updatedChannels);
             renderOnlineChannels();
         }
