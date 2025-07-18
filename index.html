@@ -53,17 +53,13 @@
         .channel-launcher {
             background-color: #1f1f1f;
             border: 1px solid #333;
-            border-left: 4px solid #555; /* Cor padrão (offline) */
+            border-left: 4px solid #00ff7f; /* Apenas canais online serão mostrados, então a borda é sempre verde */
             border-radius: 8px;
             padding: 10px 15px;
-            display: flex;
+            display: flex; /* 'none' para offline, 'flex' para online */
             justify-content: space-between;
             align-items: center;
-            transition: border-color 0.5s ease;
-        }
-        /* Estilo para canais ONLINE */
-        .channel-launcher.online {
-            border-left-color: #00ff7f;
+            transition: opacity 0.5s ease;
         }
         .channel-info {
             display: flex;
@@ -90,19 +86,25 @@
         .channel-actions { display: flex; align-items: center; gap: 10px; }
         .launch-btn { background-color: #444; color: #fff; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .close-btn { background-color: #ff4d4d; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
+        #status-message {
+            text-align: center;
+            color: #777;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
         <div id="main-controls">
-            <input type="text" id="streamerInput" placeholder="Adicionar canal...">
+            <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
             <button id="openAllOnlineBtn">Abrir Todos Online</button>
         </div>
 
         <div id="launcher-container">
             </div>
+        <p id="status-message" style="display: none;">Nenhum canal online no momento.</p>
     </div>
 
     <script>
@@ -110,8 +112,8 @@
         const addChatBtn = document.getElementById('addChatBtn');
         const openAllOnlineBtn = document.getElementById('openAllOnlineBtn');
         const launcherContainer = document.getElementById('launcher-container');
+        const statusMessage = document.getElementById('status-message');
 
-        // Objeto para armazenar os timers de cada canal
         let channelTimers = {};
 
         // --- LÓGICA DE STATUS ONLINE ---
@@ -125,21 +127,34 @@
                 if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
                 
+                // AQUI ESTÁ A MUDANÇA PRINCIPAL: MOSTRAR OU ESCONDER O ELEMENTO
                 if (data.livestream) {
-                    launcherElement.classList.add('online');
+                    launcherElement.style.display = 'flex'; // Mostra o canal se estiver online
                 } else {
-                    launcherElement.classList.remove('online');
+                    launcherElement.style.display = 'none'; // Esconde o canal se estiver offline
                 }
             } catch (error) {
                 console.error(`Erro ao verificar status de ${channelName}:`, error);
-                launcherElement.classList.remove('online');
+                launcherElement.style.display = 'none'; // Esconde em caso de erro
+            }
+        }
+        
+        function updateStatusMessage() {
+            const onlineChannels = document.querySelectorAll('.channel-launcher[style*="display: flex"]');
+            if (onlineChannels.length > 0) {
+                statusMessage.style.display = 'none';
+            } else {
+                statusMessage.style.display = 'block';
             }
         }
 
         async function updateAllStatuses() {
             const launchers = document.querySelectorAll('.channel-launcher');
             const channels = Array.from(launchers).map(launcher => launcher.dataset.channel);
+
             await Promise.all(channels.map(channel => checkChannelStatus(channel)));
+            
+            updateStatusMessage(); // Atualiza a mensagem de status após a verificação
         }
 
         // --- LÓGICA DE ABRIR CHATS E TIMERS ---
@@ -148,14 +163,13 @@
             const chatUrl = `https://kick.com/${channelName}/chatroom`;
             window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
 
-            // Inicia o timer apenas se não houver um ativo para este canal
             if (channelTimers[channelName]) return;
 
             const timerElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"] .timer`);
             if (!timerElement) return;
             
             let seconds = 0;
-            timerElement.style.display = 'inline-block'; // Mostra o timer
+            timerElement.style.display = 'inline-block';
 
             const intervalId = setInterval(() => {
                 seconds++;
@@ -164,116 +178,9 @@
                 timerElement.textContent = `${mins}:${secs}`;
             }, 1000);
 
-            channelTimers[channelName] = intervalId; // Armazena o ID do intervalo
+            channelTimers[channelName] = intervalId;
         }
 
         // --- LÓGICA DE SALVAMENTO E CRIAÇÃO DE ELEMENTOS ---
 
         function loadChannels() {
-            const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            launcherContainer.innerHTML = ''; // Limpa antes de carregar
-            savedChannels.forEach(channelName => createLauncherElement(channelName));
-            updateAllStatuses();
-        }
-
-        function saveChannels() {
-            const currentChannels = Array.from(document.querySelectorAll('.channel-launcher'))
-                                         .map(launcher => launcher.dataset.channel);
-            localStorage.setItem('kickLaunchers', JSON.stringify(currentChannels));
-        }
-
-        function createLauncherElement(channelName) {
-            if (document.querySelector(`.channel-launcher[data-channel="${channelName}"]`)) {
-                alert(`O canal ${channelName} já está na lista.`);
-                return false;
-            }
-
-            const launcherWrapper = document.createElement('div');
-            launcherWrapper.className = 'channel-launcher';
-            launcherWrapper.dataset.channel = channelName;
-
-            const channelInfo = document.createElement('div');
-            channelInfo.className = 'channel-info';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'channel-name';
-            nameSpan.textContent = channelName;
-            
-            const timerSpan = document.createElement('span');
-            timerSpan.className = 'timer';
-            timerSpan.style.display = 'none'; // Começa escondido
-
-            channelInfo.appendChild(nameSpan);
-            channelInfo.appendChild(timerSpan);
-
-            const actionsWrapper = document.createElement('div');
-            actionsWrapper.className = 'channel-actions';
-
-            const launchBtn = document.createElement('button');
-            launchBtn.className = 'launch-btn';
-            launchBtn.textContent = 'Abrir Chat';
-            launchBtn.onclick = () => openChatAndStartTimer(channelName);
-
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'close-btn';
-            closeBtn.textContent = 'X';
-            closeBtn.onclick = function() {
-                // Para e remove o timer se existir
-                if (channelTimers[channelName]) {
-                    clearInterval(channelTimers[channelName]);
-                    delete channelTimers[channelName];
-                }
-                launcherContainer.removeChild(launcherWrapper);
-                saveChannels();
-            };
-            
-            actionsWrapper.appendChild(launchBtn);
-            actionsWrapper.appendChild(closeBtn);
-            
-            launcherWrapper.appendChild(channelInfo);
-            launcherWrapper.appendChild(actionsWrapper);
-            launcherContainer.appendChild(launcherWrapper);
-            
-            return true;
-        }
-
-        function addNewChannel() {
-            const streamerName = streamerInput.value.trim().toLowerCase();
-            if (streamerName === '') {
-                alert('Por favor, digite o nome de um canal.');
-                return;
-            }
-            if (createLauncherElement(streamerName)) {
-                saveChannels();
-                checkChannelStatus(streamerName);
-            }
-            streamerInput.value = '';
-        }
-
-        // --- INICIALIZAÇÃO E EVENTOS ---
-
-        addChatBtn.addEventListener('click', addNewChannel);
-        streamerInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') addNewChannel();
-        });
-
-        openAllOnlineBtn.addEventListener('click', () => {
-            const onlineChannels = document.querySelectorAll('.channel-launcher.online');
-            if (onlineChannels.length === 0) {
-                alert('Nenhum canal online para abrir.');
-                return;
-            }
-            onlineChannels.forEach(channelElement => {
-                const channelName = channelElement.dataset.channel;
-                openChatAndStartTimer(channelName);
-            });
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadChannels();
-            setInterval(updateAllStatuses, 60000); // Atualiza status a cada 60 segundos
-        });
-    </script>
-
-</body>
-</html>
