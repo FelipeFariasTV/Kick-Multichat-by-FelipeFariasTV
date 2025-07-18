@@ -1,4 +1,4 @@
-// Este é o nosso despachante "tudo em um"
+// Este é o nosso novo despachante "tudo em um"
 export async function onRequest(context) {
   const { request, env } = context;
   const { CHANNELS_KV } = env; // Acessa nosso banco de dados
