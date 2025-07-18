@@ -1,40 +1,38 @@
-// Este é o nosso despachante "tudo em um" - VERSÃO FINAL E CORRIGIDA
-export async function onRequest(context) {
+// Despachante "tudo em um" - VERSÃO FINAL CORRIGIDA
+async function handleRequest(context) {
   const { request, env, waitUntil } = context;
-  const { CHANNELS_KV } = env; // Acessa nosso banco de dados
+  const { CHANNELS_KV } = env;
 
   switch (request.method) {
-    // Se a página estiver PEDINDO a lista de online (GET)
     case 'GET': {
       const onlineChannels = await CHANNELS_KV.get('online_channels', 'json') || [];
       return new Response(JSON.stringify(onlineChannels), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    // Se a página estiver ENVIANDO a lista de canais para salvar (POST)
     case 'POST': {
       const channelList = await request.json();
       await CHANNELS_KV.put('all_channels', JSON.stringify(channelList));
-      waitUntil(runScheduled(env)); // Inicia a verificação em segundo plano
+      waitUntil(runScheduled(env));
       return new Response(JSON.stringify({ success: true, message: `${channelList.length} canais salvos.` }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
     default:
       return new Response('Método não permitido', { status: 405 });
   }
 }
 
-// Função do "robô"
 async function runScheduled(env) {
-    console.log("Iniciando verificação de canais...");
+    console.log("Iniciando verificação de canais agendada...");
     const allChannels = await env.CHANNELS_KV.get('all_channels', 'json') || [];
-    if (allChannels.length === 0) return;
+    if (allChannels.length === 0) {
+      console.log("Nenhum canal na lista mestre para verificar.");
+      return;
+    }
 
     let onlineChannels = new Set();
-    const batchSize = 25;
+    const batchSize = 30; // Aumentamos um pouco o lote para mais eficiência
     for (let i = 0; i < allChannels.length; i += batchSize) {
         const batch = allChannels.slice(i, i + batchSize);
         const promises = batch.map(async (channelName) => {
@@ -52,10 +50,11 @@ async function runScheduled(env) {
     }
     const onlineList = Array.from(onlineChannels);
     await env.CHANNELS_KV.put('online_channels', JSON.stringify(onlineList));
-    console.log(`Verificação concluída. ${onlineList.length} canais online encontrados.`);
+    console.log(`Verificação concluída. ${onlineList.length} canais online encontrados e salvos.`);
 }
 
-// Robô agendado que roda a cada 2 minutos
+export const onRequest = handleRequest;
+
 export default {
     async scheduled(controller, env, ctx) {
         ctx.waitUntil(runScheduled(env));
