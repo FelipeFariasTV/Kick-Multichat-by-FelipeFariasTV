@@ -9,31 +9,16 @@
         .container { max-width: 600px; margin: 0 auto; }
         #main-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
         #streamerInput { flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid #333; background-color: #222; color: #fff; }
-        #addChatBtn, #resetBtn { padding: 10px 15px; border: none; color: #111; font-weight: bold; border-radius: 5px; cursor: pointer; transition: transform 0.1s; }
-        #addChatBtn { background-color: #00ff7f; }
-        #resetBtn { background-color: #ffae42; }
-        #addChatBtn:active, #resetBtn:active { transform: scale(0.98); }
+        #addChatBtn { padding: 10px 15px; border: none; color: #111; background-color: #00ff7f; font-weight: bold; border-radius: 5px; cursor: pointer; }
         #counter-display { font-size: 1.1em; color: #aaa; font-weight: bold; margin-left: auto; white-space: nowrap; }
-        #online-count { color: #00ff7f; }
         #completed-count { color: #ffae42; }
         #channel-display { position: relative; height: 120px; margin-top: 30px; display: flex; align-items: center; justify-content: center; }
-        .channel-card {
-            background-color: #1f1f1f;
-            border: 1px solid #444;
-            border-left: 4px solid #00ff7f;
-            border-radius: 8px;
-            padding: 20px 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            box-sizing: border-box;
-            animation: fadeIn 0.5s ease;
-        }
+        .channel-card { background-color: #1f1f1f; border: 1px solid #444; border-left: 4px solid #00ff7f; border-radius: 8px; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; animation: fadeIn 0.5s ease; }
         .channel-name { font-weight: bold; font-size: 1.5em; color: #eee; }
         .channel-actions { display: flex; align-items: center; gap: 10px; }
         .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 12px 18px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 1em; }
-        .close-btn { background-color: #555; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
+        #next-channel-btn { background-color: #7f7fff; color: #111; border: none; padding: 15px 25px; font-size: 1.2em; border-radius: 8px; cursor: pointer; }
+        #next-channel-btn:disabled { background-color: #333; color: #777; cursor: not-allowed; }
         #status-message { text-align: center; color: #777; font-style: italic; padding: 20px; min-height: 24px; }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     </style>
@@ -43,26 +28,26 @@
         <div id="main-controls">
             <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
-            <button id="resetBtn">Começar de Novo</button>
             <div id="counter-display">
-                Pendentes: <span id="online-count">0</span> / Concluídos: <span id="completed-count">0</span>
+                Concluídos: <span id="completed-count">0</span>
             </div>
         </div>
         <div id="channel-display">
-            </div>
-        <p id="status-message">Carregando...</p>
+             <button id="next-channel-btn">Buscar Próximo Online</button>
+        </div>
+        <p id="status-message"></p>
     </div>
 
     <script>
         const streamerInput = document.getElementById('streamerInput');
         const addChatBtn = document.getElementById('addChatBtn');
-        const resetBtn = document.getElementById('resetBtn');
+        const nextChannelBtn = document.getElementById('next-channel-btn');
         const channelDisplay = document.getElementById('channel-display');
         const statusMessage = document.getElementById('status-message');
-        const onlineCountSpan = document.getElementById('online-count');
         const completedCountSpan = document.getElementById('completed-count');
 
-        let pendingQueue = [];
+        let masterChannelList = [];
+        let currentIndex = 0;
 
         function getOpenedChannels() { return new Set(JSON.parse(localStorage.getItem('openedKickChannels')) || []); }
         function addChannelToOpened(channelName) {
@@ -70,129 +55,98 @@
             opened.add(channelName);
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(opened)));
         }
-        
-        function updateCounters() {
-            onlineCountSpan.textContent = pendingQueue.length;
-            completedCountSpan.textContent = getOpenedChannels().size;
-        }
+        function updateCompletedCounter() { completedCountSpan.textContent = getOpenedChannels().size; }
 
-        async function fetchAndBuildQueue() {
-            statusMessage.textContent = 'Verificando todos os canais... Isso pode levar um momento.';
-            statusMessage.style.display = 'block';
-            channelDisplay.innerHTML = '';
-            onlineCountSpan.textContent = '...';
+        async function findNextOnline() {
+            nextChannelBtn.disabled = true;
+            nextChannelBtn.textContent = 'Buscando...';
+            channelDisplay.innerHTML = ''; // Limpa o card anterior
+            statusMessage.textContent = `Verificando a partir do canal ${currentIndex + 1}...`;
 
-            try {
-                const response = await fetch('/api');
-                if (!response.ok) throw new Error('Erro de comunicação com o despachante.');
-                
-                const allOnlineChannels = await response.json();
-                const openedChannels = getOpenedChannels();
-                
-                pendingQueue = allOnlineChannels.filter(ch => !openedChannels.has(ch));
-                
-                displayNextInQueue();
+            const openedChannels = getOpenedChannels();
+            
+            while(currentIndex < masterChannelList.length) {
+                const channelName = masterChannelList[currentIndex];
+                statusMessage.textContent = `Verificando ${currentIndex + 1}/${masterChannelList.length}: ${channelName}`;
 
-            } catch (error) {
-                console.error("Erro fatal ao buscar status:", error);
-                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
+                if (!openedChannels.has(channelName)) {
+                    try {
+                        const response = await fetch('/api/status', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ channel: channelName })
+                        });
+                        const data = await response.json();
+                        if (data.is_live) {
+                            createLauncherElement(channelName);
+                            statusMessage.textContent = `Encontrado!`;
+                            nextChannelBtn.disabled = false;
+                            nextChannelBtn.textContent = 'Buscar Próximo Online';
+                            return; // Para a busca
+                        }
+                    } catch (error) {
+                        console.error(`Erro ao verificar ${channelName}:`, error);
+                    }
+                }
+                currentIndex++;
             }
-        }
-        
-        function displayNextInQueue() {
-            channelDisplay.innerHTML = ''; // Limpa o canal anterior
-            updateCounters();
 
-            if (pendingQueue.length > 0) {
-                const channelName = pendingQueue[0]; // Pega o primeiro da fila, mas não remove ainda
-                createLauncherElement(channelName);
-                statusMessage.style.display = 'none';
-            } else {
-                statusMessage.textContent = 'Fila concluída! Clique em "Começar de Novo" para reiniciar.';
-                statusMessage.style.display = 'block';
-            }
+            // Se chegou ao final da lista
+            statusMessage.textContent = 'Verificação concluída! Nenhum outro canal online encontrado.';
+            nextChannelBtn.textContent = 'Começar de Novo';
+            nextChannelBtn.style.backgroundColor = '#ffae42';
+            nextChannelBtn.disabled = false;
         }
 
-        function processCurrentChannel() {
-            if (pendingQueue.length === 0) return;
-            const channelName = pendingQueue.shift(); // Agora remove o primeiro da fila
-
-            const chatUrl = `https://kick.com/${channelName}/chatroom`;
-            window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
-            addChannelToOpened(channelName);
-            displayNextInQueue(); // Mostra o próximo
-        }
-        
         function createLauncherElement(channelName) {
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-card';
-            launcherWrapper.dataset.channel = channelName;
             launcherWrapper.innerHTML = `
                 <span class="channel-name">${channelName}</span>
-                <div class="channel-actions">
-                    <button class="launch-btn">Abrir Chat e Próximo</button>
-                    <button class="close-btn" title="Remover permanentemente da lista">X</button>
-                </div>`;
-            launcherWrapper.querySelector('.launch-btn').onclick = () => processCurrentChannel();
-            launcherWrapper.querySelector('.close-btn').onclick = (e) => {
-                e.stopPropagation();
-                removeChannelFromStorage(channelName);
+                <button class="launch-btn">Abrir e Buscar Próximo</button>`;
+            launcherWrapper.querySelector('.launch-btn').onclick = () => {
+                window.open(`https://kick.com/${channelName}/chatroom`, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
+                addChannelToOpened(channelName);
+                updateCompletedCounter();
+                currentIndex++; // Avança para o próximo da lista mestre
+                findNextOnline();
             };
             channelDisplay.appendChild(launcherWrapper);
         }
 
-        async function updateMasterListOnServer(channelList) {
-             try {
-                const response = await fetch('/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(channelList)
-                });
-                if (!response.ok) throw new Error('Falha ao salvar a lista no servidor.');
-                console.log('Lista mestre atualizada no servidor.');
-             } catch (error) {
-                console.error("Erro ao salvar lista mestre:", error);
-                alert("Não foi possível salvar a lista no servidor.");
-             }
-        }
+        nextChannelBtn.addEventListener('click', () => {
+            if (nextChannelBtn.textContent === 'Começar de Novo') {
+                localStorage.removeItem('openedKickChannels');
+                currentIndex = 0;
+                updateCompletedCounter();
+                nextChannelBtn.style.backgroundColor = '#7f7fff';
+            }
+            findNextOnline();
+        });
 
+        function loadMasterList() {
+            masterChannelList = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
+            updateCompletedCounter();
+            statusMessage.textContent = `${masterChannelList.length} canais na sua lista. Pronto para começar.`;
+        }
+        
+        // --- Funções de gerenciamento da lista mestre ---
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
             if (!streamerName) return;
-            let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            if (savedChannels.includes(streamerName)) {
-                alert(`O canal ${streamerName} já está na lista.`);
-                return;
-            }
-            savedChannels.push(streamerName);
-            localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
+            if (masterChannelList.includes(streamerName)) return;
+            masterChannelList.push(streamerName);
+            localStorage.setItem('kickLaunchers', JSON.stringify(masterChannelList));
             streamerInput.value = '';
-            updateMasterListOnServer(savedChannels);
-            alert(`${streamerName} foi adicionado. Aperte F5 ou "Começar de Novo" para incluí-lo na verificação.`);
+            loadMasterList();
         }
-
-        function removeChannelFromStorage(channelName) {
-            if (!confirm(`Remover "${channelName}" da sua lista permanentemente?`)) return;
-            let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            const updatedChannels = savedChannels.filter(c => c !== channelName);
-            localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
-            updateMasterListOnServer(updatedChannels);
-            fetchAndBuildQueue(); // Reconstrói a fila sem o canal removido
-        }
-
-        resetBtn.addEventListener('click', () => {
-            if (confirm('Isso irá limpar sua sessão de canais concluídos e buscar uma nova lista de todos que estão online. Deseja continuar?')) {
-                localStorage.removeItem('openedKickChannels');
-                fetchAndBuildQueue();
-            }
-        });
 
         addChatBtn.addEventListener('click', addNewChannel);
         streamerInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') addNewChannel();
         });
-        
-        document.addEventListener('DOMContentLoaded', fetchAndBuildQueue);
+
+        document.addEventListener('DOMContentLoaded', loadMasterList);
     </script>
 </body>
 </html>
