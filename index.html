@@ -12,6 +12,7 @@
             margin: 0;
             padding: 20px;
             font-size: 16px;
+            overflow: hidden; /* Previne o scroll da página principal */
         }
         .container {
             max-width: 600px;
@@ -48,28 +49,59 @@
         #online-count { color: #00ff7f; }
 
         #launcher-container {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            position: relative;
+            height: 500px; /* Altura fixa para a área das "cartas" */
+            margin-top: 30px;
         }
         .channel-launcher {
             background-color: #1f1f1f;
-            border: 1px solid #333;
+            border: 1px solid #444;
             border-left: 4px solid #00ff7f;
             border-radius: 8px;
-            padding: 10px 15px;
+            padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            
+            position: absolute;
+            width: 100%;
+            box-sizing: border-box;
+            
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            transform-origin: bottom center;
+
+            /* Estado inicial de cada carta na pilha */
+            transform: translateY(60px) scale(0.9);
+            opacity: 0;
+            pointer-events: none; /* Não clicável por padrão */
         }
+
+        /* Estilos para as "cartas" visíveis na pilha */
+        .channel-launcher:nth-child(1) {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+            z-index: 10;
+            pointer-events: auto; /* Apenas o primeiro é clicável */
+        }
+        .channel-launcher:nth-child(2) {
+            transform: translateY(20px) scale(0.95);
+            opacity: 0.5;
+            z-index: 9;
+        }
+        .channel-launcher:nth-child(3) {
+            transform: translateY(40px) scale(0.9);
+            opacity: 0.2;
+            z-index: 8;
+        }
+
         .channel-name {
             font-weight: bold;
-            font-size: 1.1em;
+            font-size: 1.2em;
             color: #eee;
         }
         .channel-actions { display: flex; align-items: center; gap: 10px; }
-        .launch-btn { background-color: #444; color: #fff; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .close-btn { background-color: #ff4d4d; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
+        .launch-btn { background-color: #00ff7f; color: #111; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .close-btn { background-color: #555; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
         #status-message {
             text-align: center;
             color: #777;
@@ -110,37 +142,36 @@
                 return;
             }
             
+            statusMessage.textContent = 'Verificando canais online...';
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
-            let onlineCount = 0;
 
-            let i = 0;
+            let onlineChannels = [];
+
             for (const channelName of savedChannels) {
-                i++;
-                statusMessage.textContent = `Verificando ${i} de ${savedChannels.length}: ${channelName}...`;
                 try {
                     const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
                     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
                     
                     const response = await fetch(proxyUrl);
-
                     if (response.ok) {
                         const data = await response.json();
                         if (data.livestream) {
-                            onlineCount++;
-                            onlineCountSpan.textContent = onlineCount;
-                            createLauncherElement(channelName);
-                            statusMessage.style.display = 'none'; // Esconde a msg de "verificando" se encontrarmos alguém
+                            onlineChannels.push(channelName);
                         }
                     }
-                    // Pausa mais longa para ser "educado" com a API
                     await new Promise(resolve => setTimeout(resolve, 250)); 
                 } catch (error) {
                     console.error(`Erro ao verificar status de ${channelName}:`, error);
                 }
             }
 
-            if (onlineCount === 0) {
+            onlineCountSpan.textContent = onlineChannels.length;
+
+            if (onlineChannels.length > 0) {
+                statusMessage.style.display = 'none';
+                onlineChannels.forEach(channelName => createLauncherElement(channelName));
+            } else {
                 statusMessage.textContent = 'Nenhum canal online no momento. Aperte F5 para verificar novamente.';
                 statusMessage.style.display = 'block';
             }
@@ -178,17 +209,17 @@
             `;
 
             launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndRemove(channelName);
-            launcherWrapper.querySelector('.close-btn').onclick = () => removeChannelFromStorage(channelName);
+            launcherWrapper.querySelector('.close-btn').onclick = (e) => {
+                e.stopPropagation(); 
+                removeChannelFromStorage(channelName);
+            };
             
             launcherContainer.appendChild(launcherWrapper);
         }
 
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
-            if (!streamerName) {
-                alert('Por favor, digite o nome de um canal.');
-                return;
-            }
+            if (!streamerName) return;
             
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             if (savedChannels.includes(streamerName)) {
@@ -206,10 +237,7 @@
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             const updatedChannels = savedChannels.filter(c => c !== channelName);
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
-            
-            const elementToRemove = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
-            if (elementToRemove) elementToRemove.remove();
-            onlineCountSpan.textContent = launcherContainer.children.length;
+            checkAndRenderOnlineChannels();
         }
 
         addChatBtn.addEventListener('click', addNewChannel);
