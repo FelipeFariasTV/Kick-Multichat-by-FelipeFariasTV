@@ -14,7 +14,7 @@
             font-size: 16px;
         }
         .container {
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
         }
         #main-controls {
@@ -32,18 +32,17 @@
             background-color: #222;
             color: #fff;
         }
-        #addChatBtn, #openAllOnlineBtn {
+        #addChatBtn {
             padding: 10px 15px;
             border: none;
             color: #111;
+            background-color: #00ff7f;
             font-weight: bold;
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s, transform 0.1s;
         }
-        #addChatBtn { background-color: #00ff7f; }
-        #openAllOnlineBtn { background-color: #7f7fff; }
-        #addChatBtn:active, #openAllOnlineBtn:active { transform: scale(0.98); }
+        #addChatBtn:active { transform: scale(0.98); }
 
         #launcher-container {
             display: flex;
@@ -59,12 +58,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        .channel-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            overflow: hidden;
         }
         .channel-name {
             font-weight: bold;
@@ -91,7 +84,6 @@
         <div id="main-controls">
             <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
             <button id="addChatBtn">Adicionar</button>
-            <button id="openAllOnlineBtn">Abrir Todos Online</button>
         </div>
 
         <div id="launcher-container">
@@ -102,7 +94,6 @@
     <script>
         const streamerInput = document.getElementById('streamerInput');
         const addChatBtn = document.getElementById('addChatBtn');
-        const openAllOnlineBtn = document.getElementById('openAllOnlineBtn');
         const launcherContainer = document.getElementById('launcher-container');
         const statusMessage = document.getElementById('status-message');
 
@@ -143,7 +134,7 @@
                 statusMessage.style.display = 'none';
                 onlineChannels.forEach(channelName => createLauncherElement(channelName));
             } else {
-                statusMessage.textContent = 'Nenhum canal online no momento.';
+                statusMessage.textContent = 'Nenhum canal online no momento. Aperte F5 para verificar novamente.';
                 statusMessage.style.display = 'block';
             }
         }
@@ -152,15 +143,13 @@
             const chatUrl = `https://kick.com/${channelName}/chatroom`;
             window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
 
-            // Remove o elemento da tela após clicar
             const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
             if (launcherElement) {
                 launcherElement.remove();
             }
 
-            // Atualiza a mensagem de status se a lista ficar vazia
             if (launcherContainer.children.length === 0) {
-                 statusMessage.textContent = 'Todos os chats online foram abertos.';
+                 statusMessage.textContent = 'Todos os chats online foram abertos. Aperte F5 para recarregar a lista.';
                  statusMessage.style.display = 'block';
             }
         }
@@ -171,9 +160,7 @@
             launcherWrapper.dataset.channel = channelName;
 
             launcherWrapper.innerHTML = `
-                <div class="channel-info">
-                    <span class="channel-name">${channelName}</span>
-                </div>
+                <span class="channel-name">${channelName}</span>
                 <div class="channel-actions">
                     <button class="launch-btn">Abrir Chat</button>
                     <button class="close-btn">X</button>
@@ -188,7 +175,7 @@
 
         function addNewChannel() {
             const streamerName = streamerInput.value.trim().toLowerCase();
-            if (streamerName === '') {
+            if (!streamerName) {
                 alert('Por favor, digite o nome de um canal.');
                 return;
             }
@@ -216,20 +203,7 @@
         streamerInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') addNewChannel();
         });
-
-        openAllOnlineBtn.addEventListener('click', () => {
-            const onlineChannelElements = document.querySelectorAll('.channel-launcher');
-            if (onlineChannelElements.length === 0) {
-                alert('Nenhum canal online para abrir.');
-                return;
-            }
-            onlineChannelElements.forEach(channelElement => {
-                const channelName = channelElement.dataset.channel;
-                openChatAndRemove(channelName);
-            });
-        });
-
-        // Roda a verificação APENAS UMA VEZ quando a página carrega.
+        
         document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
     </script>
 
