@@ -53,12 +53,11 @@
 <body>
     <div class="container">
         <div id="main-controls">
-            <input type="text" id="streamerInput" placeholder="Adicionar canal à lista...">
+            <input type="text" id="streamerInput" placeholder="Adicionar/Remover canal da lista...">
             <button id="addChatBtn">Adicionar</button>
-            <div id="counter-display">Online: <span id="online-count">0</span></div>
         </div>
         <div id="launcher-container"></div>
-        <p id="status-message" style="display: none;">Verificando...</p>
+        <p id="status-message" style="display: none;">Buscando canais online...</p>
     </div>
 
     <script>
@@ -68,56 +67,29 @@
         const statusMessage = document.getElementById('status-message');
         const onlineCountSpan = document.getElementById('online-count');
 
-        async function checkAndRenderOnlineChannels() {
-            const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            if (savedChannels.length === 0) {
-                launcherContainer.innerHTML = '';
-                statusMessage.textContent = 'Sua lista está vazia.';
-                statusMessage.style.display = 'block';
-                onlineCountSpan.textContent = '0';
-                return;
-            }
-            
+        // Pede a lista de online para o nosso despachante privado
+        async function renderOnlineChannels() {
+            statusMessage.textContent = 'Buscando canais online...';
             statusMessage.style.display = 'block';
             launcherContainer.innerHTML = '';
             onlineCountSpan.textContent = '...';
 
-            // --- LÓGICA DE PROCESSAMENTO EM LOTES ---
-            const batchSize = 20; // Processar 20 canais por vez
-            let allOnlineChannels = [];
-
-            for (let i = 0; i < savedChannels.length; i += batchSize) {
-                const batch = savedChannels.slice(i, i + batchSize);
-                statusMessage.textContent = `Verificando pacote ${Math.floor(i / batchSize) + 1} de ${Math.ceil(savedChannels.length / batchSize)}...`;
-
-                try {
-                    const response = await fetch('/status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(batch)
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Erro no pacote ${i}: ${response.statusText}`);
-                    }
-
-                    const onlineFromBatch = await response.json();
-                    allOnlineChannels.push(...onlineFromBatch);
-
-                } catch (error) {
-                    console.error("Erro ao processar pacote:", error);
+            try {
+                const response = await fetch('/api/get-online');
+                if (!response.ok) throw new Error('Erro de comunicação com o servidor.');
+                
+                const onlineChannels = await response.json();
+                
+                onlineCountSpan.textContent = onlineChannels.length;
+                if (onlineChannels.length > 0) {
+                    statusMessage.style.display = 'none';
+                    onlineChannels.forEach(channelName => createLauncherElement(channelName));
+                } else {
+                    statusMessage.textContent = 'Nenhum canal online no momento. O robô está verificando...';
                 }
-            }
-
-            // --- FIM DA LÓGICA DE LOTES ---
-
-            onlineCountSpan.textContent = allOnlineChannels.length;
-            if (allOnlineChannels.length > 0) {
-                statusMessage.style.display = 'none';
-                allOnlineChannels.forEach(channelName => createLauncherElement(channelName));
-            } else {
-                statusMessage.textContent = 'Nenhum canal online no momento. Aperte F5 para verificar novamente.';
-                statusMessage.style.display = 'block';
+            } catch (error) {
+                console.error("Erro fatal ao buscar status:", error);
+                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
             }
         }
 
@@ -126,59 +98,16 @@
             window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
             const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
             if (launcherElement) launcherElement.remove();
+            
             const remaining = launcherContainer.children.length;
             onlineCountSpan.textContent = remaining;
+
             if (remaining === 0) {
-                 statusMessage.textContent = 'Todos os chats online foram abertos. Aperte F5 para recarregar.';
+                 statusMessage.textContent = 'Todos os chats online foram abertos. Aperte F5 para ver atualizações.';
                  statusMessage.style.display = 'block';
             }
         }
         
         function createLauncherElement(channelName) {
             const launcherWrapper = document.createElement('div');
-            launcherWrapper.className = 'channel-launcher';
-            launcherWrapper.dataset.channel = channelName;
-            launcherWrapper.innerHTML = `
-                <span class="channel-name">${channelName}</span>
-                <div class="channel-actions">
-                    <button class="launch-btn">Abrir Chat</button>
-                    <button class="close-btn" title="Remover da lista salva">X</button>
-                </div>`;
-            launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndRemove(channelName);
-            launcherWrapper.querySelector('.close-btn').onclick = (e) => {
-                e.stopPropagation();
-                removeChannelFromStorage(channelName);
-            };
-            launcherContainer.appendChild(launcherWrapper);
-        }
-
-        function addNewChannel() {
-            const streamerName = streamerInput.value.trim().toLowerCase();
-            if (!streamerName) return;
-            let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            if (savedChannels.includes(streamerName)) {
-                alert(`O canal ${streamerName} já está na lista.`);
-                return;
-            }
-            savedChannels.push(streamerName);
-            localStorage.setItem('kickLaunchers', JSON.stringify(savedChannels));
-            streamerInput.value = '';
-            checkAndRenderOnlineChannels();
-        }
-
-        function removeChannelFromStorage(channelName) {
-            let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
-            const updatedChannels = savedChannels.filter(c => c !== channelName);
-            localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
-            checkAndRenderOnlineChannels();
-        }
-
-        addChatBtn.addEventListener('click', addNewChannel);
-        streamerInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') addNewChannel();
-        });
-        
-        document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
-    </script>
-</body>
-</html>
+            launcherWrapper.className = 'channel
