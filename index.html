@@ -74,14 +74,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .timer {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 0.9em;
-            color: #aaa;
-            background-color: #2a2a2a;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
         .channel-actions { display: flex; align-items: center; gap: 10px; }
         .launch-btn { background-color: #444; color: #fff; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .close-btn { background-color: #ff4d4d; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
@@ -114,8 +106,6 @@
         const launcherContainer = document.getElementById('launcher-container');
         const statusMessage = document.getElementById('status-message');
 
-        let channelTimers = {};
-
         async function checkAndRenderOnlineChannels() {
             const savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             
@@ -134,13 +124,9 @@
 
             for (const channelName of savedChannels) {
                 try {
-                    // --- MUDANÇA PRINCIPAL AQUI: USANDO O PROXY ---
                     const kickApiUrl = `https://kick.com/api/v2/channels/${channelName}`;
                     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kickApiUrl)}`;
-                    
                     const response = await fetch(proxyUrl);
-                    // --- FIM DA MUDANÇA ---
-
                     if (response.ok) {
                         const data = await response.json();
                         if (data.livestream) {
@@ -162,28 +148,23 @@
             }
         }
 
-        function openChatAndStartTimer(channelName) {
+        function openChatAndRemove(channelName) {
             const chatUrl = `https://kick.com/${channelName}/chatroom`;
             window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
 
-            if (channelTimers[channelName]) return;
+            // Remove o elemento da tela após clicar
+            const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
+            if (launcherElement) {
+                launcherElement.remove();
+            }
 
-            const timerElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"] .timer`);
-            if (!timerElement) return;
-            
-            let seconds = 0;
-            timerElement.style.display = 'inline-block';
-
-            const intervalId = setInterval(() => {
-                seconds++;
-                const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-                const secs = (seconds % 60).toString().padStart(2, '0');
-                timerElement.textContent = `${mins}:${secs}`;
-            }, 1000);
-
-            channelTimers[channelName] = intervalId;
+            // Atualiza a mensagem de status se a lista ficar vazia
+            if (launcherContainer.children.length === 0) {
+                 statusMessage.textContent = 'Todos os chats online foram abertos.';
+                 statusMessage.style.display = 'block';
+            }
         }
-
+        
         function createLauncherElement(channelName) {
             const launcherWrapper = document.createElement('div');
             launcherWrapper.className = 'channel-launcher';
@@ -192,7 +173,6 @@
             launcherWrapper.innerHTML = `
                 <div class="channel-info">
                     <span class="channel-name">${channelName}</span>
-                    <span class="timer" style="display: none;"></span>
                 </div>
                 <div class="channel-actions">
                     <button class="launch-btn">Abrir Chat</button>
@@ -200,8 +180,8 @@
                 </div>
             `;
 
-            launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndStartTimer(channelName);
-            launcherWrapper.querySelector('.close-btn').onclick = () => removeChannel(channelName);
+            launcherWrapper.querySelector('.launch-btn').onclick = () => openChatAndRemove(channelName);
+            launcherWrapper.querySelector('.close-btn').onclick = () => removeChannelFromStorage(channelName);
             
             launcherContainer.appendChild(launcherWrapper);
         }
@@ -225,11 +205,7 @@
             checkAndRenderOnlineChannels();
         }
 
-        function removeChannel(channelName) {
-            if (channelTimers[channelName]) {
-                clearInterval(channelTimers[channelName]);
-                delete channelTimers[channelName];
-            }
+        function removeChannelFromStorage(channelName) {
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             const updatedChannels = savedChannels.filter(c => c !== channelName);
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
@@ -249,14 +225,12 @@
             }
             onlineChannelElements.forEach(channelElement => {
                 const channelName = channelElement.dataset.channel;
-                openChatAndStartTimer(channelName);
+                openChatAndRemove(channelName);
             });
         });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            checkAndRenderOnlineChannels();
-            setInterval(checkAndRenderOnlineChannels, 60000);
-        });
+        // Roda a verificação APENAS UMA VEZ quando a página carrega.
+        document.addEventListener('DOMContentLoaded', checkAndRenderOnlineChannels);
     </script>
 
 </body>
