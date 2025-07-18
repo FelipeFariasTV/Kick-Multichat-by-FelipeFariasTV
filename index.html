@@ -102,15 +102,16 @@
 
             try {
                 const response = await fetch('/api/get-online');
-                if (!response.ok) throw new Error('Erro de comunicação com o servidor.');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`O servidor respondeu com erro ${response.status}: ${errorText}`);
+                }
                 
                 const allOnlineChannels = await response.json();
                 const openedChannels = getOpenedChannels();
-
-                // LÓGICA CORRIGIDA: Filtra para mostrar apenas os canais online que AINDA NÃO FORAM ABERTOS
                 const pendingChannels = allOnlineChannels.filter(ch => !openedChannels.has(ch));
                 
-                updateCounters(); // Atualiza contagem de concluídos
+                updateCounters();
                 onlineCountSpan.textContent = pendingChannels.length;
 
                 if (pendingChannels.length > 0) {
@@ -121,7 +122,9 @@
                 }
             } catch (error) {
                 console.error("Erro fatal ao buscar status:", error);
-                statusMessage.textContent = 'Erro ao buscar status. Tente recarregar a página.';
+                statusMessage.textContent = `Erro: ${error.message}`;
+                // MUDANÇA PRINCIPAL: Mostra o erro detalhado no alerta
+                alert(`Ocorreu um erro ao buscar o status. Detalhe técnico: ${error.message}`);
             }
         }
 
@@ -130,7 +133,6 @@
             window.open(chatUrl, `_blank`, 'width=400,height=600,resizable=yes,scrollbars=yes');
             
             addChannelToOpened(channelName);
-
             const launcherElement = document.querySelector(`.channel-launcher[data-channel="${channelName}"]`);
             if (launcherElement) launcherElement.remove();
             
@@ -192,16 +194,12 @@
 
         function removeChannelFromStorage(channelName) {
             if (!confirm(`Tem certeza que quer remover "${channelName}" da sua lista permanentemente?`)) return;
-            
             let savedChannels = JSON.parse(localStorage.getItem('kickLaunchers')) || [];
             let openedChannels = getOpenedChannels();
-
             const updatedChannels = savedChannels.filter(c => c !== channelName);
-            openedChannels.delete(channelName); // Remove também da lista de abertos
-
+            openedChannels.delete(channelName);
             localStorage.setItem('kickLaunchers', JSON.stringify(updatedChannels));
             localStorage.setItem('openedKickChannels', JSON.stringify(Array.from(openedChannels)));
-            
             updateMasterListOnServer(updatedChannels);
             renderOnlineChannels();
         }
