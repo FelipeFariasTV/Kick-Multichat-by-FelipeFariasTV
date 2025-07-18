@@ -12,7 +12,10 @@ export async function onRequestPost(context) {
     });
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ channel: channel, is_live: false }), { status: 200 });
+      // Se a Kick não encontrar o canal, consideramos como offline
+      return new Response(JSON.stringify({ channel: channel, is_live: false }), { 
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     const data = await response.json();
@@ -22,6 +25,11 @@ export async function onRequestPost(context) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: e.message, is_live: false }), { status: 500 });
   }
+}
+
+// Qualquer outro método (como GET) vai retornar um erro.
+export async function onRequest(context) {
+    return new Response('Método não permitido. Use POST.', { status: 405 });
 }
